@@ -1,0 +1,56 @@
+name: Daily Predictions
+
+on:
+  schedule:
+    # Run daily at 06:00 UTC (before most European tournaments start)
+    - cron: '0 6 * * *'
+  workflow_dispatch:  # Manual trigger
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Update data sources
+        run: |
+          tennis-predict ingest --start-year 1991
+
+      - name: Build features
+        run: |
+          tennis-predict build-features --start-year 1991
+
+      - name: Train model
+        run: |
+          tennis-predict train --model ensemble --no-validate
+
+      - name: Generate predictions
+        run: |
+          tennis-predict predict --model ensemble
+
+      - name: Generate site
+        run: |
+          python -c "
+          from tennis_predictor.web.generate import generate_site
+          generate_site()
+          "
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site

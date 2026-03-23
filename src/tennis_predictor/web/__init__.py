@@ -1,0 +1,1 @@
+"""Web / GitHub Pages generation."""
