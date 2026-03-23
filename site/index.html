@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tennis Predictor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>Tennis Predictor</h1>
+        <p class="subtitle">ATP Match Predictions &mdash; Calibrated Probabilities</p>
+    </header>
+
+    <main>
+        <section id="status" class="card">
+            <h2>System Status</h2>
+            <div id="status-content">Loading...</div>
+        </section>
+
+        <section id="predictions" class="card">
+            <h2>Upcoming Predictions</h2>
+            <div id="predictions-content">Loading...</div>
+        </section>
+
+        <section id="performance" class="card">
+            <h2>Model Performance</h2>
+            <div class="metrics-grid" id="metrics-content">Loading...</div>
+        </section>
+
+        <section id="calibration" class="card">
+            <h2>Calibration Plot</h2>
+            <p class="desc">A calibrated model's predicted probabilities match actual outcomes.
+            The diagonal line represents perfect calibration.</p>
+            <canvas id="calibration-chart" width="500" height="400"></canvas>
+        </section>
+
+        <section id="recent" class="card">
+            <h2>Recent Results</h2>
+            <div id="recent-content">Loading...</div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Built with temporal integrity. No data leakage. Calibration over accuracy.</p>
+        <p>Data: <a href="https://github.com/JeffSackmann/tennis_atp">JeffSackmann/tennis_atp</a>
+         | Weather: <a href="https://open-meteo.com/">Open-Meteo</a>
+         | Court Speed: <a href="https://courtspeed.com/">CourtSpeed.com</a></p>
+    </footer>
+
+    <script src="assets/js/app.js"></script>
+</body>
+</html>

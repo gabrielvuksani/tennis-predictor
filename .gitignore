@@ -1,0 +1,11 @@
+.venv/
+data/raw/
+data/processed/
+data/cache/
+data/predictions/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+*.pkl
+catboost_info/
