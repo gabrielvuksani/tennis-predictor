@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-24T00:02:24.661201",
+  "generated_at": "2026-03-24T00:06:28.267241",
   "model_version": "0.1.0",
   "predictions": [
     {
@@ -11,13 +11,13 @@
       "surface": "Hard",
       "start_time": "2026-03-24T20:00:00+00:00",
       "status": "upcoming",
-      "p1_rank": 41,
-      "p2_rank": 1,
+      "p1_rank": 40,
+      "p2_rank": 2,
       "confidence": 0.879,
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-24T00:02:24.659284",
+      "generated_at": "2026-03-24T00:06:28.263151",
       "edge_signal": "high_confidence"
     },
     {
@@ -29,13 +29,13 @@
       "surface": "Hard",
       "start_time": "2026-03-25T00:30:00+00:00",
       "status": "upcoming",
-      "p1_rank": 84,
-      "p2_rank": 2,
+      "p1_rank": 111,
+      "p2_rank": 4,
       "confidence": 0.768,
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-24T00:02:24.660253",
+      "generated_at": "2026-03-24T00:06:28.264069",
       "edge_signal": "high_confidence"
     },
     {
@@ -47,13 +47,13 @@
       "surface": "Hard",
       "start_time": "2026-03-24T20:00:00+00:00",
       "status": "upcoming",
-      "p1_rank": 157,
-      "p2_rank": 17,
+      "p1_rank": 53,
+      "p2_rank": 20,
       "confidence": 0.652,
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-24T00:02:24.658807",
+      "generated_at": "2026-03-24T00:06:28.262701",
       "edge_signal": "high_confidence"
     },
     {
@@ -65,13 +65,13 @@
       "surface": "Hard",
       "start_time": "2026-03-24T15:00:00+00:00",
       "status": "upcoming",
-      "p1_rank": 16,
+      "p1_rank": 36,
       "p2_rank": 156,
       "confidence": 0.624,
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-24T00:02:24.656814",
+      "generated_at": "2026-03-24T00:06:28.260866",
       "edge_signal": "high_confidence"
     },
     {
@@ -83,13 +83,13 @@
       "surface": "Hard",
       "start_time": "2026-03-24T16:30:00+00:00",
       "status": "upcoming",
-      "p1_rank": 121,
-      "p2_rank": 20,
+      "p1_rank": 25,
+      "p2_rank": 31,
       "confidence": 0.542,
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-24T00:02:24.657851",
+      "generated_at": "2026-03-24T00:06:28.261796",
       "edge_signal": "none"
     },
     {
@@ -101,13 +101,13 @@
       "surface": "Hard",
       "start_time": "2026-03-24T16:00:00+00:00",
       "status": "upcoming",
-      "p1_rank": 31,
-      "p2_rank": 4,
+      "p1_rank": 22,
+      "p2_rank": 7,
       "confidence": 0.515,
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-24T00:02:24.657368",
+      "generated_at": "2026-03-24T00:06:28.261349",
       "edge_signal": "none"
     },
     {
@@ -119,13 +119,13 @@
       "surface": "Hard",
       "start_time": "2026-03-24T18:00:00+00:00",
       "status": "upcoming",
-      "p1_rank": 39,
-      "p2_rank": 12,
+      "p1_rank": 32,
+      "p2_rank": 23,
       "confidence": 0.493,
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-24T00:02:24.658325",
+      "generated_at": "2026-03-24T00:06:28.262241",
       "edge_signal": "none"
     },
     {
@@ -137,13 +137,13 @@
       "surface": "Hard",
       "start_time": "2026-03-24T23:00:00+00:00",
       "status": "upcoming",
-      "p1_rank": 18,
-      "p2_rank": 30,
+      "p1_rank": 34,
+      "p2_rank": 19,
       "confidence": 0.424,
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-24T00:02:24.659773",
+      "generated_at": "2026-03-24T00:06:28.263609",
       "edge_signal": "none"
     }
   ],

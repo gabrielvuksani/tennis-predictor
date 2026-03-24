@@ -56,15 +56,24 @@ def run_live_predictions() -> list[dict]:
     # 3. Load model and state
     guard_state, player_lookup = _load_state()
 
-    # 4. Look up rankings from Sackmann data (most recent available)
-    ranking_lookup = _build_ranking_lookup()
+    # 4. Look up LIVE rankings from ESPN (current, not stale Sackmann data)
+    from tennis_predictor.data.rankings import fetch_live_rankings, get_player_rank
+    live_ranks = fetch_live_rankings()
+    sackmann_ranks = _build_ranking_lookup()  # Fallback for players outside top 150
+
     for match in upcoming:
-        if not match.get("p1_rank"):
+        # Try ESPN first (current), fall back to Sackmann (stale but broader)
+        r1 = get_player_rank(match["player1"], live_ranks)
+        if r1 is None:
             pid1 = _find_player_id(match["player1"], player_lookup)
-            match["p1_rank"] = ranking_lookup.get(pid1) if pid1 else None
-        if not match.get("p2_rank"):
+            r1 = sackmann_ranks.get(pid1) if pid1 else None
+        match["p1_rank"] = r1
+
+        r2 = get_player_rank(match["player2"], live_ranks)
+        if r2 is None:
             pid2 = _find_player_id(match["player2"], player_lookup)
-            match["p2_rank"] = ranking_lookup.get(pid2) if pid2 else None
+            r2 = sackmann_ranks.get(pid2) if pid2 else None
+        match["p2_rank"] = r2
 
     # 5. Generate predictions
     predictions = []
