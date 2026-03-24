@@ -3,62 +3,54 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tennis Predictor — AI Match Predictions</title>
-<meta name="description" content="ATP tennis predictions powered by ML. 244 features, self-learning, calibrated probabilities.">
+<title>Tennis Predictor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
 <div class="app">
-  <nav class="nav">
-    <div class="nav-inner">
-      <div class="nav-brand"><span class="brand-dot"></span>Tennis Predictor</div>
-      <div class="nav-status" id="nav-status"></div>
-    </div>
-  </nav>
+  <nav class="topbar"><div class="topbar-in">
+    <div class="brand"><span class="dot"></span> Tennis Predictor</div>
+    <div class="status" id="status"></div>
+  </div></nav>
 
-  <main class="main">
-    <section class="hero">
-      <h1>ATP Match <span class="grad">Predictions</span></h1>
-      <p class="hero-sub">Machine learning model trained on 320K+ matches. Updated twice daily.</p>
+  <main class="wrap">
+    <header class="hero">
+      <h1>Match <span class="hl">Predictions</span></h1>
+      <p>AI model &middot; 320K matches &middot; 244 features &middot; Updated 2x daily</p>
+    </header>
+
+    <section class="sec">
+      <div class="sec-top"><h2>Upcoming</h2><span class="pill" id="cnt">0</span></div>
+      <div id="cards"></div>
     </section>
 
-    <section class="predictions" id="predictions-section">
-      <div class="section-bar">
-        <h2>Upcoming Matches</h2>
-        <span class="count-pill" id="pred-count">0</span>
-      </div>
-      <div id="predictions-content" class="card-stack">
-        <div class="skel"></div><div class="skel"></div><div class="skel"></div>
-      </div>
+    <section class="sec">
+      <h2>Performance</h2>
+      <div class="grid4" id="perf"></div>
     </section>
 
-    <section class="metrics-section">
-      <div class="section-bar"><h2>Model Metrics</h2></div>
-      <div class="metrics" id="metrics-content"></div>
+    <section class="sec">
+      <h2>Calibration</h2>
+      <p class="sub">Predicted probability vs actual outcome. Diagonal = perfect.</p>
+      <div class="chart-box"><canvas id="cal"></canvas></div>
     </section>
 
-    <section class="chart-section">
-      <div class="section-bar"><h2>Calibration</h2></div>
-      <p class="muted sm">Predicted probability vs actual win rate. Closer to the diagonal = better calibrated.</p>
-      <div class="chart-wrap"><canvas id="cal-chart" width="560" height="380"></canvas></div>
-    </section>
-
-    <section class="about-section">
-      <div class="section-bar"><h2>How It Works</h2></div>
-      <div class="about-grid">
-        <div class="about-card"><div class="ac-num">244</div><div class="ac-label">Features</div><p>Elo, Glicko-2, serve/return splits, fatigue, weather, court speed, momentum, sentiment, line movements</p></div>
-        <div class="about-card"><div class="ac-num">320K</div><div class="ac-label">Matches</div><p>Trained on ATP data from 1991-2026 including challengers. TennisMyLife + JeffSackmann sources.</p></div>
-        <div class="about-card"><div class="ac-num">0</div><div class="ac-label">Data Leakage</div><p>TemporalGuard ensures no future information leaks into predictions. The #1 flaw in other models.</p></div>
-        <div class="about-card"><div class="ac-num">24/7</div><div class="ac-label">Autonomous</div><p>Self-learning system. Elo updates after every match. Retrains daily. Drift detection auto-triggers retraining.</p></div>
+    <section class="sec">
+      <h2>System</h2>
+      <div class="grid4">
+        <div class="info-card"><strong>244</strong><span>Features</span><p>Elo, Glicko-2, serve/return, fatigue, weather, court speed, sentiment</p></div>
+        <div class="info-card"><strong>320K</strong><span>Matches</span><p>1991-2026. JeffSackmann + TennisMyLife databases</p></div>
+        <div class="info-card"><strong>Zero</strong><span>Leakage</span><p>TemporalGuard ensures no future data leaks into predictions</p></div>
+        <div class="info-card"><strong>24/7</strong><span>Autonomous</span><p>Self-learning. Retrains daily. Drift detection triggers emergency retrains</p></div>
       </div>
     </section>
   </main>
 
   <footer class="foot">
-    <p>320,229 matches &middot; 10,361 players &middot; 12 data sources &middot; Zero API keys</p>
-    <p><a href="https://github.com/gabrielvuksani/tennis-predictor">GitHub</a> &middot; <a href="https://github.com/JeffSackmann/tennis_atp">Data</a> &middot; <a href="https://open-meteo.com">Weather</a></p>
+    <p>10,361 players tracked &middot; 12 data sources &middot; All free, zero API keys</p>
+    <p><a href="https://github.com/gabrielvuksani/tennis-predictor">Source</a></p>
   </footer>
 </div>
 <script src="assets/js/app.js"></script>
