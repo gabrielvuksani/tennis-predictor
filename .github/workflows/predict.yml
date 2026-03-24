@@ -73,7 +73,19 @@ jobs:
           fi
           echo "Running in ${{ steps.mode.outputs.mode || 'full' }} mode"
 
+      - name: Check model state
+        id: model
+        run: |
+          if [ -f "data/processed/guard_state_full.pkl" ]; then
+            echo "has_model=true" >> $GITHUB_OUTPUT
+            echo "Model state found — will generate fresh predictions"
+          else
+            echo "has_model=false" >> $GITHUB_OUTPUT
+            echo "No model state — will deploy existing site predictions"
+          fi
+
       - name: Run daily update
+        if: steps.model.outputs.has_model == 'true'
         env:
           QUICK_MODE: ${{ steps.mode.outputs.mode == 'quick' && '1' || '0' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
