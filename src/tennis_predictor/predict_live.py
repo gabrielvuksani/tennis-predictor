@@ -89,8 +89,8 @@ def run_live_predictions() -> list[dict]:
     from tennis_predictor.models.selective import compute_edge_signals
     predictions = compute_edge_signals(predictions)
 
-    high_conf = sum(1 for p in predictions if p["edge_signal"] != "none")
-    print(f"\nGenerated {len(predictions)} predictions ({high_conf} high-edge)")
+    high_conf = sum(1 for p in predictions if p.get("recommendation") == "strong_predict")
+    print(f"\nGenerated {len(predictions)} predictions ({high_conf} high-confidence)")
 
     # 4. Save
     save_predictions(predictions)
