@@ -333,42 +333,34 @@ def full_pipeline(start_year, tour_only, test_year, weather, court_speed, odds):
 @main.command()
 def live():
     """Fetch upcoming matches and generate live predictions."""
-    from tennis_predictor.predict_live import (
-        fetch_upcoming_from_odds_api,
-        generate_predictions,
-        save_predictions,
-        build_player_lookup,
-    )
-    import os
+    from tennis_predictor.predict_live import run_live_predictions
 
-    # Build player lookup if missing
-    lookup_path = PROCESSED_DIR / "player_lookup.json"
-    if not lookup_path.exists():
-        build_player_lookup()
-
-    api_key = os.environ.get("ODDS_API_KEY", "")
-    upcoming = fetch_upcoming_from_odds_api(api_key)
-
-    if upcoming:
-        predictions = generate_predictions(upcoming)
-        if predictions:
-            save_predictions(predictions)
-            for p in predictions:
-                fav = "p1" if p["prob_p1"] >= 0.5 else "p2"
-                prob = max(p["prob_p1"], p["prob_p2"])
-                click.echo(
-                    f"  {p['player1']} vs {p['player2']}: "
-                    f"{p['player1'] if fav == 'p1' else p['player2']} "
-                    f"({prob:.0%}) | {p['tournament']}"
-                )
+    predictions = run_live_predictions()
+    if predictions:
+        for p in predictions:
+            prob = max(p["prob_p1"], p["prob_p2"])
+            fav = p["player1"] if p["prob_p1"] >= 0.5 else p["player2"]
+            click.echo(
+                f"  {fav} {prob:.0%} | "
+                f"{p['player1']} vs {p['player2']} | {p['tournament']}"
+            )
     else:
-        click.echo("No upcoming matches found. Set ODDS_API_KEY for live data.")
+        click.echo("No upcoming matches found.")
 
 
 @main.command()
-def daily_update():
-    """Run the daily lightweight update (for automation)."""
-    exec(open("scripts/daily_update.py").read())
+@click.option("--quick", is_flag=True, help="Quick refresh (predictions only, no retrain)")
+def daily_update(quick):
+    """Run the daily self-learning update (for automation)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "daily_update", str(PROCESSED_DIR.parent.parent / "scripts" / "daily_update.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    if quick:
+        import sys as _sys
+        _sys.argv.append("--quick")
+    spec.loader.exec_module(mod)
 
 
 if __name__ == "__main__":

@@ -2,10 +2,20 @@ name: Daily Predictions
 
 on:
   schedule:
-    # Run daily at 06:00 UTC (before European tournaments) and 14:00 UTC (before US)
+    # Morning: full cycle (self-learn + retrain + predict)
     - cron: '0 6 * * *'
+    # Afternoon: quick refresh (predict only)
     - cron: '0 14 * * *'
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - quick
 
 permissions:
   contents: write
@@ -19,7 +29,10 @@ concurrency:
 jobs:
   predict:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,48 +43,70 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: pip install -e .
+        run: |
+          pip install -e .
+          pip install xlrd openpyxl rapidfuzz
 
       - name: Restore model state
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
-            data/processed/model_*.pkl
-            data/processed/guard_state*.pkl
-            data/processed/matches.parquet
-            data/processed/features*.parquet
-            data/processed/targets*.npy
-            data/processed/online_state/
-            data/processed/player_lookup.json
+            data/processed/
             data/raw/tennis_atp/
+            data/raw/odds/
             data/cache/
-          key: model-state-${{ github.sha }}
+            data/predictions/
+          key: model-state-v1
           restore-keys: |
             model-state-
 
+      - name: Determine run mode
+        id: mode
+        run: |
+          # Afternoon cron (14:00) = quick mode, morning (06:00) = full
+          HOUR=$(date -u +%H)
+          INPUT_MODE="${{ github.event.inputs.mode }}"
+          if [ "$INPUT_MODE" = "quick" ] || [ "$HOUR" -ge 12 ]; then
+            echo "mode=quick" >> $GITHUB_OUTPUT
+          else
+            echo "mode=full" >> $GITHUB_OUTPUT
+          fi
+          echo "Running in ${{ steps.mode.outputs.mode || 'full' }} mode"
+
       - name: Run daily update
         env:
-          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-        run: python scripts/daily_update.py
+          QUICK_MODE: ${{ steps.mode.outputs.mode == 'quick' && '1' || '0' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/daily_update.py ${{ steps.mode.outputs.mode == 'quick' && '--quick' || '' }}
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
+      - name: Verify predictions exist
+        run: |
+          PRED_COUNT=$(python -c "import json; d=json.load(open('site/predictions.json')); print(len(d.get('predictions', [])))")
+          echo "Predictions generated: $PRED_COUNT"
+          if [ "$PRED_COUNT" -eq 0 ]; then
+            echo "::warning::No predictions generated — schedule sources may be down"
+          fi
 
       - name: Save model state
         uses: actions/cache/save@v4
         if: always()
         with:
           path: |
-            data/processed/model_*.pkl
-            data/processed/guard_state*.pkl
-            data/processed/matches.parquet
-            data/processed/features*.parquet
-            data/processed/targets*.npy
-            data/processed/online_state/
-            data/processed/player_lookup.json
+            data/processed/
             data/raw/tennis_atp/
+            data/raw/odds/
             data/cache/
-          key: model-state-${{ github.sha }}
+            data/predictions/
+          key: model-state-v1
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'site'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
