@@ -1,284 +1,271 @@
 """Live prediction generator — fetches upcoming matches and generates predictions.
 
 Workflow:
-1. Load the trained model and TemporalGuard state from disk
-2. Fetch upcoming matches (The Odds API free tier or fallback to schedule)
-3. Build features for each upcoming match using the guard's current state
+1. Scrape upcoming matches from Flashscore (no API key needed)
+2. Load trained model + TemporalGuard state (Elo/Glicko ratings)
+3. Build features for each match using player ratings
 4. Generate calibrated probability predictions
-5. Output predictions as JSON for the site
+5. Output as JSON for the GitHub Pages site
 """
 
 from __future__ import annotations
 
 import json
-import os
 import pickle
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import requests
 
-from tennis_predictor.config import PROCESSED_DIR, PREDICTIONS_DIR, SITE_DIR
+from tennis_predictor.config import PROCESSED_DIR, PREDICTIONS_DIR, SITE_DIR, ELO_CONFIG
 
 
-# === UPCOMING MATCH SOURCES ===
+def run_live_predictions() -> list[dict]:
+    """Full pipeline: scrape matches → predict → save → return."""
+    from tennis_predictor.data.schedule import fetch_upcoming_matches
 
-def fetch_upcoming_from_odds_api(api_key: str | None = None) -> list[dict]:
-    """Fetch upcoming ATP matches from The Odds API (free tier: 500 credits/month).
+    print("=== Live Prediction Generator ===\n")
 
-    Each call to /odds costs 1 credit per region. /events costs 0 credits.
-    """
-    api_key = api_key or os.environ.get("ODDS_API_KEY", "")
-    if not api_key:
+    # 1. Fetch upcoming matches (today + tomorrow, deduplicated)
+    print("Fetching upcoming ATP matches...")
+    today = fetch_upcoming_matches(day_offset=0)
+    tomorrow = fetch_upcoming_matches(day_offset=1)
+    all_matches = today + tomorrow
+
+    # Deduplicate by player pair
+    seen = set()
+    upcoming = []
+    for m in all_matches:
+        key = (m["player1"], m["player2"])
+        if key not in seen:
+            seen.add(key)
+            upcoming.append(m)
+
+    print(f"Found {len(today)} today + {len(tomorrow)} tomorrow = {len(upcoming)} unique")
+
+    if not upcoming:
+        print("No upcoming matches found.")
         return []
 
-    matches = []
-    for sport in ["tennis_atp_us_open", "tennis_atp_french_open",
-                   "tennis_atp_wimbledon", "tennis_atp_aus_open"]:
-        try:
-            # Events endpoint is FREE (0 credits)
-            resp = requests.get(
-                f"https://api.the-odds-api.com/v4/sports/{sport}/events",
-                params={"apiKey": api_key},
-                timeout=15,
-            )
-            if resp.status_code == 200:
-                for event in resp.json():
-                    matches.append({
-                        "player1": event.get("home_team", ""),
-                        "player2": event.get("away_team", ""),
-                        "commence_time": event.get("commence_time", ""),
-                        "sport": sport,
-                        "tournament": _sport_to_tournament(sport),
-                    })
-        except requests.RequestException:
-            continue
+    # 2. Load model and state
+    guard_state, player_lookup = _load_state()
 
-    # Also try generic ATP endpoint
-    try:
-        resp = requests.get(
-            "https://api.the-odds-api.com/v4/sports",
-            params={"apiKey": api_key},
-            timeout=15,
-        )
-        if resp.status_code == 200:
-            atp_sports = [s["key"] for s in resp.json()
-                          if "tennis" in s["key"].lower() and s.get("active", False)]
-            for sport in atp_sports:
-                if sport in ["tennis_atp_us_open", "tennis_atp_french_open",
-                             "tennis_atp_wimbledon", "tennis_atp_aus_open"]:
-                    continue  # Already fetched
-                try:
-                    resp2 = requests.get(
-                        f"https://api.the-odds-api.com/v4/sports/{sport}/events",
-                        params={"apiKey": api_key},
-                        timeout=15,
-                    )
-                    if resp2.status_code == 200:
-                        for event in resp2.json():
-                            matches.append({
-                                "player1": event.get("home_team", ""),
-                                "player2": event.get("away_team", ""),
-                                "commence_time": event.get("commence_time", ""),
-                                "sport": sport,
-                                "tournament": _sport_to_tournament(sport),
-                            })
-                except requests.RequestException:
-                    continue
-    except requests.RequestException:
-        pass
-
-    remaining = resp.headers.get("x-requests-remaining", "?") if resp else "?"
-    print(f"Fetched {len(matches)} upcoming matches from The Odds API (credits remaining: {remaining})")
-    return matches
-
-
-def fetch_upcoming_from_rss() -> list[dict]:
-    """Fallback: get tournament context from ATP RSS feed."""
-    try:
-        import feedparser
-        feed = feedparser.parse("https://www.atptour.com/en/media/rss-feed/xml-feed")
-        # RSS doesn't give match schedules, but gives tournament context
-        return []
-    except Exception:
-        return []
-
-
-# === PREDICTION ENGINE ===
-
-def generate_predictions(upcoming_matches: list[dict] | None = None) -> list[dict]:
-    """Generate predictions for upcoming matches.
-
-    If no upcoming matches are provided, uses dummy data for site display.
-    """
-    # Load model
-    model_path = PROCESSED_DIR / "model_ensemble.pkl"
-    if not model_path.exists():
-        # Try individual model
-        for name in ["model_catboost.pkl", "model_xgboost.pkl"]:
-            alt = PROCESSED_DIR / name
-            if alt.exists():
-                model_path = alt
-                break
-
-    if not model_path.exists():
-        print("No trained model found. Run the training pipeline first.")
-        return []
-
-    with open(model_path, "rb") as f:
-        model = pickle.load(f)
-
-    # Load guard state
-    guard_path = PROCESSED_DIR / "guard_state_full.pkl"
-    if not guard_path.exists():
-        guard_path = PROCESSED_DIR / "guard_state.pkl"
-    if not guard_path.exists():
-        print("No guard state found. Run the feature pipeline first.")
-        return []
-
-    with open(guard_path, "rb") as f:
-        guard_state = pickle.load(f)
-
-    # Load player lookup
-    players_path = PROCESSED_DIR / "player_lookup.json"
-    player_lookup = {}
-    if players_path.exists():
-        player_lookup = json.loads(players_path.read_text())
-
-    if not upcoming_matches:
-        print("No upcoming matches to predict.")
-        return []
-
-    # Build features for each match and predict
+    # 3. Generate predictions
     predictions = []
-    from tennis_predictor.temporal.guard import TemporalGuard, TemporalState
-    guard = TemporalGuard(state=guard_state)
+    for match in upcoming:
+        pred = _predict_match(match, guard_state, player_lookup)
+        if pred:
+            predictions.append(pred)
 
-    for match in upcoming_matches:
-        try:
-            p1_name = match.get("player1", "")
-            p2_name = match.get("player2", "")
+    # Sort by confidence (most confident first)
+    predictions.sort(key=lambda p: abs(p["prob_p1"] - 0.5), reverse=True)
 
-            if not p1_name or not p2_name:
-                continue
+    print(f"\nGenerated {len(predictions)} predictions")
 
-            # Look up player IDs
-            p1_id = player_lookup.get(p1_name.lower(), p1_name)
-            p2_id = player_lookup.get(p2_name.lower(), p2_name)
-
-            # Get Elo ratings from state
-            from tennis_predictor.config import ELO_CONFIG
-            init = ELO_CONFIG["initial_rating"]
-            elo1 = guard.state.elo.get(str(p1_id), init)
-            elo2 = guard.state.elo.get(str(p2_id), init)
-            elo_prob = 1.0 / (1.0 + 10 ** ((elo2 - elo1) / 400))
-
-            predictions.append({
-                "player1": p1_name,
-                "player2": p2_name,
-                "prob_p1": round(elo_prob, 3),
-                "prob_p2": round(1 - elo_prob, 3),
-                "tournament": match.get("tournament", ""),
-                "commence_time": match.get("commence_time", ""),
-                "model": "elo_baseline",
-                "generated_at": datetime.now().isoformat(),
-            })
-        except Exception as e:
-            print(f"Error predicting {match}: {e}")
-            continue
+    # 4. Save
+    save_predictions(predictions)
 
     return predictions
 
 
+def _load_state() -> tuple:
+    """Load guard state and player lookup."""
+    # Load guard state (has Elo/Glicko ratings for all players)
+    guard_state = None
+    for path in [PROCESSED_DIR / "guard_state_full.pkl", PROCESSED_DIR / "guard_state.pkl"]:
+        if path.exists():
+            with open(path, "rb") as f:
+                guard_state = pickle.load(f)
+            print(f"Loaded rating state from {path.name}")
+            print(f"  Players tracked: {len(guard_state.elo)}")
+            break
+
+    # Load or build player lookup (name -> player_id)
+    player_lookup = {}
+    lookup_path = PROCESSED_DIR / "player_lookup.json"
+    if lookup_path.exists():
+        player_lookup = json.loads(lookup_path.read_text())
+        print(f"Loaded player lookup: {len(player_lookup)} names")
+    else:
+        player_lookup = build_player_lookup()
+
+    return guard_state, player_lookup
+
+
+def _predict_match(
+    match: dict,
+    guard_state,
+    player_lookup: dict,
+) -> dict | None:
+    """Generate a prediction for a single upcoming match."""
+    p1_name = match.get("player1", "")
+    p2_name = match.get("player2", "")
+    surface = match.get("surface", "Hard")
+    tournament = match.get("tournament", "")
+
+    if not p1_name or not p2_name:
+        return None
+
+    # Look up player IDs
+    p1_id = _find_player_id(p1_name, player_lookup)
+    p2_id = _find_player_id(p2_name, player_lookup)
+
+    if guard_state is None:
+        # Fallback: use rankings if available
+        p1_rank = match.get("p1_rank")
+        p2_rank = match.get("p2_rank")
+        if p1_rank and p2_rank:
+            # Simple logistic model from rank difference
+            rank_diff = p2_rank - p1_rank  # Positive = p1 is better
+            prob_p1 = 1.0 / (1.0 + 10 ** (-rank_diff / 250))
+        else:
+            return None
+    else:
+        init = ELO_CONFIG["initial_rating"]
+
+        # Get Elo ratings
+        elo1 = guard_state.elo.get(p1_id, init) if p1_id else init
+        elo2 = guard_state.elo.get(p2_id, init) if p2_id else init
+
+        # Surface Elo
+        surf_elo1 = guard_state.elo_surface.get((p1_id, surface), init) if p1_id else init
+        surf_elo2 = guard_state.elo_surface.get((p2_id, surface), init) if p2_id else init
+
+        # Blended probability (60% surface Elo, 40% overall Elo)
+        elo_prob = 1.0 / (1.0 + 10 ** ((elo2 - elo1) / 400))
+        surf_prob = 1.0 / (1.0 + 10 ** ((surf_elo2 - surf_elo1) / 400))
+        prob_p1 = 0.4 * elo_prob + 0.6 * surf_prob
+
+        # Adjust toward 50% if we have no data on a player (uncertainty)
+        if p1_id is None or elo1 == init:
+            prob_p1 = 0.4 * prob_p1 + 0.6 * 0.5
+        if p2_id is None or elo2 == init:
+            prob_p1 = 0.4 * prob_p1 + 0.6 * 0.5
+
+    prob_p1 = max(0.05, min(0.95, prob_p1))
+
+    # Confidence level
+    confidence = abs(prob_p1 - 0.5) * 2  # 0 = toss-up, 1 = certain
+
+    return {
+        "player1": p1_name,
+        "player2": p2_name,
+        "prob_p1": round(prob_p1, 3),
+        "prob_p2": round(1 - prob_p1, 3),
+        "tournament": tournament,
+        "surface": surface,
+        "start_time": match.get("start_time", ""),
+        "status": match.get("status", "upcoming"),
+        "p1_rank": match.get("p1_rank"),
+        "p2_rank": match.get("p2_rank"),
+        "confidence": round(confidence, 3),
+        "model": "elo_surface_blend",
+        "generated_at": datetime.now().isoformat(),
+    }
+
+
+def _find_player_id(name: str, player_lookup: dict) -> str | None:
+    """Find player ID from name, handling various formats.
+
+    Flashscore uses "Djokovic N." or "Djokovic Novak" format.
+    Sackmann uses "Novak Djokovic" format.
+    """
+    if not name:
+        return None
+
+    name_lower = name.strip().lower()
+
+    # Direct lookup
+    if name_lower in player_lookup:
+        return player_lookup[name_lower]
+
+    # Try "Last First" → "First Last" conversion
+    parts = name_lower.split()
+    if len(parts) >= 2:
+        # Try "Last First" format
+        reordered = " ".join(parts[1:]) + " " + parts[0]
+        if reordered in player_lookup:
+            return player_lookup[reordered]
+
+        # Try just last name match (risky but works for unique last names)
+        last_name = parts[0].rstrip(".")
+        candidates = [
+            (k, v) for k, v in player_lookup.items()
+            if k.split()[-1] == last_name
+        ]
+        if len(candidates) == 1:
+            return candidates[0][1]
+
+        # Try "Lastname I." → match "First Lastname" where First starts with I
+        if len(parts) == 2 and parts[1].endswith("."):
+            initial = parts[1][0]
+            candidates = [
+                (k, v) for k, v in player_lookup.items()
+                if k.split()[-1] == last_name and k.split()[0].startswith(initial)
+            ]
+            if len(candidates) == 1:
+                return candidates[0][1]
+
+    return None
+
+
 def save_predictions(predictions: list[dict]) -> Path:
-    """Save predictions to JSON for the site."""
+    """Save predictions to site JSON."""
     PREDICTIONS_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Save to predictions dir
     output = {
         "generated_at": datetime.now().isoformat(),
         "n_predictions": len(predictions),
         "predictions": predictions,
     }
+    latest_path = PREDICTIONS_DIR / "latest.json"
+    latest_path.write_text(json.dumps(output, indent=2))
 
-    path = PREDICTIONS_DIR / "latest.json"
-    path.write_text(json.dumps(output, indent=2))
-
-    # Also update site predictions
-    site_pred = SITE_DIR / "predictions.json"
-    if site_pred.exists():
-        existing = json.loads(site_pred.read_text())
+    # Update site predictions.json
+    site_path = SITE_DIR / "predictions.json"
+    if site_path.exists():
+        existing = json.loads(site_path.read_text())
         existing["predictions"] = predictions
         existing["generated_at"] = datetime.now().isoformat()
-        site_pred.write_text(json.dumps(existing, indent=2))
+        site_path.write_text(json.dumps(existing, indent=2, default=str))
+    else:
+        SITE_DIR.mkdir(parents=True, exist_ok=True)
+        site_path.write_text(json.dumps(output, indent=2, default=str))
 
-    print(f"Saved {len(predictions)} predictions to {path}")
-    return path
+    print(f"Saved {len(predictions)} predictions to {site_path}")
+    return site_path
 
 
 def build_player_lookup() -> dict:
-    """Build a name -> player_id mapping from Sackmann data."""
+    """Build a name → player_id mapping from Sackmann data."""
     matches_path = PROCESSED_DIR / "matches.parquet"
     if not matches_path.exists():
+        print("No matches.parquet found. Run pipeline first.")
         return {}
 
     matches = pd.read_parquet(matches_path)
     lookup = {}
 
-    for _, row in matches.iterrows():
-        if pd.notna(row.get("winner_name")) and pd.notna(row.get("winner_id")):
-            lookup[str(row["winner_name"]).lower()] = str(row["winner_id"])
-        if pd.notna(row.get("loser_name")) and pd.notna(row.get("loser_id")):
-            lookup[str(row["loser_name"]).lower()] = str(row["loser_id"])
+    for col_name, col_id in [("winner_name", "winner_id"), ("loser_name", "loser_id")]:
+        for _, row in matches[[col_name, col_id]].drop_duplicates().iterrows():
+            if pd.notna(row[col_name]) and pd.notna(row[col_id]):
+                lookup[str(row[col_name]).lower().strip()] = str(row[col_id])
 
     path = PROCESSED_DIR / "player_lookup.json"
     path.write_text(json.dumps(lookup, indent=2))
-    print(f"Built player lookup: {len(lookup)} players")
+    print(f"Built player lookup: {len(lookup)} names")
     return lookup
 
 
-def _sport_to_tournament(sport_key: str) -> str:
-    mapping = {
-        "tennis_atp_us_open": "US Open",
-        "tennis_atp_french_open": "Roland Garros",
-        "tennis_atp_wimbledon": "Wimbledon",
-        "tennis_atp_aus_open": "Australian Open",
-    }
-    return mapping.get(sport_key, sport_key.replace("tennis_atp_", "").replace("_", " ").title())
-
-
-# === RESULTS PROCESSING ===
-
-def process_latest_results() -> dict:
-    """Process the latest match results to update Elo/Glicko ratings.
-
-    This is the online learning step — called after each day of matches.
-    """
-    from tennis_predictor.online.learner import OnlineLearner
-
-    learner = OnlineLearner()
-    stats = learner.get_performance_trend()
-    print(f"Online learner: {stats.get('total_predictions', 0)} predictions, "
-          f"Brier trend: {stats.get('brier_trend', 'unknown')}")
-    return stats
-
-
 if __name__ == "__main__":
-    import sys
-
-    api_key = os.environ.get("ODDS_API_KEY", "")
-
-    # Fetch upcoming matches
-    upcoming = fetch_upcoming_from_odds_api(api_key)
-    if not upcoming:
-        print("No upcoming matches found. Site will show model stats only.")
-
-    # Generate predictions
-    predictions = generate_predictions(upcoming)
-
-    # Save
+    predictions = run_live_predictions()
     if predictions:
-        save_predictions(predictions)
-    else:
-        print("No predictions generated.")
+        print(f"\n{'='*60}")
+        print(f"{'Player 1':<25} {'Player 2':<25} {'Prob':>6} {'Conf':>5}")
+        print(f"{'-'*60}")
+        for p in predictions[:20]:
+            fav = p["player1"] if p["prob_p1"] >= 0.5 else p["player2"]
+            prob = max(p["prob_p1"], p["prob_p2"])
+            print(f"{p['player1']:<25} {p['player2']:<25} {prob:>5.0%} {p['confidence']:>5.1%}")
