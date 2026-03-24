@@ -56,7 +56,17 @@ def run_live_predictions() -> list[dict]:
     # 3. Load model and state
     guard_state, player_lookup = _load_state()
 
-    # 4. Generate predictions
+    # 4. Look up rankings from Sackmann data (most recent available)
+    ranking_lookup = _build_ranking_lookup()
+    for match in upcoming:
+        if not match.get("p1_rank"):
+            pid1 = _find_player_id(match["player1"], player_lookup)
+            match["p1_rank"] = ranking_lookup.get(pid1) if pid1 else None
+        if not match.get("p2_rank"):
+            pid2 = _find_player_id(match["player2"], player_lookup)
+            match["p2_rank"] = ranking_lookup.get(pid2) if pid2 else None
+
+    # 5. Generate predictions
     predictions = []
     for match in upcoming:
         pred = _predict_match(match, guard_state, player_lookup)
@@ -186,6 +196,35 @@ def _predict_match(
     }
 
 
+def _build_ranking_lookup() -> dict[str, int]:
+    """Build player_id → ATP ranking from the most recent Sackmann data."""
+    matches_path = PROCESSED_DIR / "matches.parquet"
+    if not matches_path.exists():
+        return {}
+
+    try:
+        matches = pd.read_parquet(matches_path)
+        # Get the last known ranking for each player (from winner and loser columns)
+        rankings = {}
+        # Sort by date, take the most recent rank for each player
+        recent = matches.sort_values("tourney_date", ascending=False).head(20000)
+
+        for _, row in recent.iterrows():
+            wid = str(row.get("winner_id", ""))
+            lid = str(row.get("loser_id", ""))
+            wr = row.get("winner_rank")
+            lr = row.get("loser_rank")
+
+            if wid and pd.notna(wr) and wid not in rankings:
+                rankings[wid] = int(wr)
+            if lid and pd.notna(lr) and lid not in rankings:
+                rankings[lid] = int(lr)
+
+        return rankings
+    except Exception:
+        return {}
+
+
 def _enrich_matches(matches: list[dict]) -> list[dict]:
     """Add sentiment and line movement data to matches."""
     # Sentiment (Reddit)
@@ -220,8 +259,13 @@ def _enrich_matches(matches: list[dict]) -> list[dict]:
 def _find_player_id(name: str, player_lookup: dict) -> str | None:
     """Find player ID from name, handling various formats.
 
-    Flashscore uses "Djokovic N." or "Djokovic Novak" format.
-    Sackmann uses "Novak Djokovic" format.
+    Flashscore uses "Last I." format (e.g., "Sinner J.", "Fritz T.").
+    Sackmann uses "First Last" format (e.g., "Jannik Sinner", "Taylor Fritz").
+
+    Strategy:
+    1. Direct lookup
+    2. Convert "Last I." → find "First Last" where first starts with I and last matches
+    3. Fallback: unique last name match (only if exactly 1 candidate)
     """
     if not name:
         return None
@@ -232,32 +276,57 @@ def _find_player_id(name: str, player_lookup: dict) -> str | None:
     if name_lower in player_lookup:
         return player_lookup[name_lower]
 
-    # Try "Last First" → "First Last" conversion
     parts = name_lower.split()
-    if len(parts) >= 2:
-        # Try "Last First" format
-        reordered = " ".join(parts[1:]) + " " + parts[0]
-        if reordered in player_lookup:
-            return player_lookup[reordered]
+    if not parts:
+        return None
 
-        # Try just last name match (risky but works for unique last names)
-        last_name = parts[0].rstrip(".")
+    # Handle "Last I." format (most common from Flashscore)
+    # e.g., "Fritz T." → last_name="fritz", initial="t"
+    # e.g., "Etcheverry T. M." → last_name could be multi-word
+    # Strategy: try initial-based matching first (most precise)
+
+    # Find the initial (last part ending with ".")
+    initial = None
+    last_parts = []
+    for i, part in enumerate(parts):
+        if part.endswith(".") and len(part) <= 3:
+            initial = part[0]
+            last_parts = parts[:i]
+            break
+    else:
+        # No initial found — try "Last First" reordering
+        last_parts = parts
+
+    if initial and last_parts:
+        last_name = " ".join(last_parts)
+        # Find all Sackmann names where last name matches AND first initial matches
         candidates = [
             (k, v) for k, v in player_lookup.items()
-            if k.split()[-1] == last_name
+            if k.endswith(" " + last_name) and k.split()[0].startswith(initial)
         ]
         if len(candidates) == 1:
             return candidates[0][1]
+        # If multiple candidates (e.g., two "A. Zverev"), try longer initial match
+        if len(candidates) > 1:
+            # Return the one with highest Elo (most active/famous player)
+            # We don't have Elo here, so pick the shorter name (usually the famous one)
+            candidates.sort(key=lambda x: len(x[0]))
+            return candidates[0][1]
 
-        # Try "Lastname I." → match "First Lastname" where First starts with I
-        if len(parts) == 2 and parts[1].endswith("."):
-            initial = parts[1][0]
-            candidates = [
-                (k, v) for k, v in player_lookup.items()
-                if k.split()[-1] == last_name and k.split()[0].startswith(initial)
-            ]
-            if len(candidates) == 1:
-                return candidates[0][1]
+    # Fallback: try "Last First" → "First Last" reordering
+    if len(parts) >= 2:
+        reordered = " ".join(parts[1:]).rstrip(".") + " " + parts[0]
+        if reordered in player_lookup:
+            return player_lookup[reordered]
+
+    # Last resort: unique last name match (only if exactly 1 candidate)
+    last_name = parts[0].rstrip(".")
+    candidates = [
+        (k, v) for k, v in player_lookup.items()
+        if k.split()[-1] == last_name
+    ]
+    if len(candidates) == 1:
+        return candidates[0][1]
 
     return None
 

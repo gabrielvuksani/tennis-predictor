@@ -143,9 +143,10 @@ def _parse_flashscore_response(text: str) -> list[dict]:
             # Status: 1=not started, 2=live, 3=finished
             status = fields.get("AB", "1")
 
-            # Rankings
-            p1_rank = _parse_int(fields.get("CA", ""))
-            p2_rank = _parse_int(fields.get("CB", ""))
+            # Note: CA/CB are Flashscore internal IDs (draw seeds), NOT ATP rankings
+            # Rankings will be looked up from Sackmann data in predict_live.py
+            p1_rank = None
+            p2_rank = None
 
             # Clean tournament name
             tourney_clean = current_tournament
