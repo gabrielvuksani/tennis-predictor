@@ -349,6 +349,23 @@ def live():
 
 
 @main.command()
+@click.option("--trials", default=50, help="Number of Optuna trials")
+@click.option("--model", "model_type", default="catboost",
+              type=click.Choice(["xgboost", "lightgbm", "catboost"]))
+def tune(trials, model_type):
+    """Run Optuna hyperparameter optimization."""
+    from tennis_predictor.models.tuning import run_optuna_tuning
+
+    X = pd.read_parquet(PROCESSED_DIR / "features_full.parquet")
+    y = np.load(PROCESSED_DIR / "targets_full.npy")
+
+    click.echo(f"Running Optuna tuning ({trials} trials, {model_type})...")
+    best_params = run_optuna_tuning(X, y, n_trials=trials, model_type=model_type)
+    click.echo(f"\nBest parameters: {best_params}")
+    click.echo("Update config/hyperparams.yaml with these values.")
+
+
+@main.command()
 @click.option("--quick", is_flag=True, help="Quick refresh (predictions only, no retrain)")
 def daily_update(quick):
     """Run the daily self-learning update (for automation)."""

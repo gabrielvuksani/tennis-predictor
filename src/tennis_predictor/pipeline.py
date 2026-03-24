@@ -78,7 +78,8 @@ def run_full_pipeline(
         print("\n" + "=" * 60)
         print("STEP 2: Merging betting odds")
         print("=" * 60)
-        matches = _merge_odds(matches)
+        from tennis_predictor.data.odds_merge import merge_odds_with_matches
+        matches = merge_odds_with_matches(matches)
     else:
         matches["odds_implied_w"] = np.nan
         matches["odds_implied_l"] = np.nan

@@ -28,6 +28,9 @@ dependencies = [
     # Visualization
     "plotly>=5.18",
 
+    # Optimization
+    "optuna>=4.0",
+
     # Utilities
     "tqdm>=4.66",
     "joblib>=1.3",
