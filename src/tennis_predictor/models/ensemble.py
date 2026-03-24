@@ -39,12 +39,19 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
     The meta-learner is trained on out-of-fold predictions to avoid overfitting.
     """
 
+    # Key features to pass through to meta-learner for context-aware stacking
+    PASSTHROUGH_FEATURES = [
+        "elo_diff", "surface_elo_diff", "rank_diff", "surface_Hard",
+        "surface_Clay", "surface_Grass", "tourney_level_G", "best_of_5",
+    ]
+
     def __init__(
         self,
         base_models: list[tuple[str, BaseEstimator]] | None = None,
         meta_learner: BaseEstimator | None = None,
         n_folds: int = 5,
         calibrate: bool = True,
+        passthrough: bool = True,
     ):
         self.base_models = base_models or [
             ("xgboost", XGBoostPredictor()),
@@ -52,8 +59,9 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
             ("catboost", CatBoostPredictor()),
         ]
         self.meta_learner = meta_learner or LogisticRegression(
-            C=1.0, max_iter=1000, solver="lbfgs"
+            C=1.0, max_iter=5000, solver="lbfgs"
         )
+        self.passthrough = passthrough
         self.n_folds = n_folds
         self.calibrate = calibrate
         self.calibrator_ = None
@@ -66,8 +74,10 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
         n_models = len(self.base_models)
 
         # Generate out-of-fold predictions for meta-learner training
+        # Use temporal folds (no shuffling) to prevent leakage
         oof_predictions = np.zeros((n_samples, n_models))
-        kf = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=42)
+        from sklearn.model_selection import TimeSeriesSplit
+        kf = TimeSeriesSplit(n_splits=self.n_folds)
 
         self.fitted_base_models_ = []
 
@@ -100,17 +110,29 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
 
             self.fitted_base_models_.append((name, fold_models))
 
-        # Train meta-learner on out-of-fold predictions
+        # Train meta-learner on out-of-fold predictions + passthrough features
         print("  Training meta-learner...")
-        self.meta_learner.fit(oof_predictions, y)
+        meta_input = oof_predictions
+        if self.passthrough and isinstance(X, pd.DataFrame):
+            pt_cols = [c for c in self.PASSTHROUGH_FEATURES if c in X.columns]
+            if pt_cols:
+                pt_data = X[pt_cols].fillna(0).values
+                meta_input = np.hstack([oof_predictions, pt_data])
+        self.meta_learner.fit(meta_input, y)
 
-        # Calibrate
+        # Calibrate (must use same meta_input shape as training)
         if self.calibrate:
-            meta_proba = self.meta_learner.predict_proba(oof_predictions)[:, 1]
+            meta_proba = self.meta_learner.predict_proba(meta_input)[:, 1]
             self.calibrator_ = IsotonicRegression(
                 y_min=0.01, y_max=0.99, out_of_bounds="clip"
             )
             self.calibrator_.fit(meta_proba, y)
+
+        # Store passthrough column names for predict
+        self._pt_cols = (
+            [c for c in self.PASSTHROUGH_FEATURES if c in X.columns]
+            if self.passthrough and isinstance(X, pd.DataFrame) else []
+        )
 
         # Retrain all base models on full dataset for final predictions
         self.final_base_models_ = []
@@ -131,8 +153,13 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
             proba = model.predict_proba(X)
             base_preds[:, idx] = proba[:, 1]
 
-        # Meta-learner combines predictions
-        meta_proba = self.meta_learner.predict_proba(base_preds)[:, 1]
+        # Meta-learner combines predictions + passthrough features
+        meta_input = base_preds
+        pt_cols = getattr(self, "_pt_cols", [])
+        if pt_cols and isinstance(X, pd.DataFrame):
+            pt_data = X[pt_cols].fillna(0).values
+            meta_input = np.hstack([base_preds, pt_data])
+        meta_proba = self.meta_learner.predict_proba(meta_input)[:, 1]
 
         # Calibrate
         if self.calibrate and self.calibrator_ is not None:

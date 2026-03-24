@@ -213,28 +213,78 @@ def _merge_odds(matches: pd.DataFrame) -> pd.DataFrame:
         matches["odds_pinnacle_l"] = np.nan
         return matches
 
-    # Try to merge on date + player names
-    # Normalize names for matching
-    matches["_w_name_norm"] = matches["winner_name"].str.lower().str.strip()
-    matches["_l_name_norm"] = matches["loser_name"].str.lower().str.strip()
+    # Normalize names — Sackmann uses "First Last", tennis-data.co.uk uses "Last F."
+    def _normalize_name(name: str) -> str:
+        """Convert any name format to 'last_first_initial' for matching."""
+        if pd.isna(name) or not name:
+            return ""
+        name = str(name).strip().lower()
+        # Handle "Last F." format (tennis-data.co.uk)
+        if name.endswith(".") and " " in name:
+            parts = name.split()
+            last = " ".join(parts[:-1])
+            return last
+        # Handle "First Last" format (Sackmann)
+        parts = name.split()
+        if len(parts) >= 2:
+            return " ".join(parts[1:])  # Just use last name(s)
+        return name
+
+    matches["_w_name_norm"] = matches["winner_name"].apply(_normalize_name)
+    matches["_l_name_norm"] = matches["loser_name"].apply(_normalize_name)
     matches["_match_date"] = matches["tourney_date"].dt.date
 
     if "Winner" in odds_df.columns:
-        odds_df["_w_name_norm"] = odds_df["Winner"].str.lower().str.strip()
-        odds_df["_l_name_norm"] = odds_df["Loser"].str.lower().str.strip()
+        odds_df["_w_name_norm"] = odds_df["Winner"].apply(_normalize_name)
+        odds_df["_l_name_norm"] = odds_df["Loser"].apply(_normalize_name)
     if "match_date" in odds_df.columns:
         odds_df["_match_date"] = pd.to_datetime(odds_df["match_date"]).dt.date
+    elif "Date" in odds_df.columns:
+        odds_df["_match_date"] = pd.to_datetime(odds_df["Date"], dayfirst=True, errors="coerce").dt.date
+
+    # Compute implied probabilities from raw odds before merge
+    # Try Pinnacle first (sharpest), then Bet365, then average
+    for w_col, l_col, label in [
+        ("PSW", "PSL", "pinnacle"), ("B365W", "B365L", "b365"), ("AvgW", "AvgL", "avg")
+    ]:
+        if w_col in odds_df.columns and l_col in odds_df.columns:
+            ow = pd.to_numeric(odds_df[w_col], errors="coerce")
+            ol = pd.to_numeric(odds_df[l_col], errors="coerce")
+            raw_pw = 1.0 / ow
+            raw_pl = 1.0 / ol
+            total = raw_pw + raw_pl
+            # Only fill where we don't already have implied probs
+            if "implied_prob_w" not in odds_df.columns:
+                odds_df["implied_prob_w"] = np.nan
+                odds_df["implied_prob_l"] = np.nan
+            mask = odds_df["implied_prob_w"].isna() & ow.notna()
+            odds_df.loc[mask, "implied_prob_w"] = (raw_pw / total)[mask]
+            odds_df.loc[mask, "implied_prob_l"] = (raw_pl / total)[mask]
+            # Keep raw decimal odds for ROI simulation
+            if "odds_pinnacle_w" not in odds_df.columns:
+                odds_df["odds_pinnacle_w"] = np.nan
+                odds_df["odds_pinnacle_l"] = np.nan
+            pmask = odds_df["odds_pinnacle_w"].isna() & ow.notna()
+            odds_df.loc[pmask, "odds_pinnacle_w"] = ow[pmask]
+            odds_df.loc[pmask, "odds_pinnacle_l"] = ol[pmask]
+
+    # Select merge columns
+    odds_merge_cols = ["_match_date", "_w_name_norm", "_l_name_norm"]
+    for c in ["implied_prob_w", "implied_prob_l", "odds_pinnacle_w", "odds_pinnacle_l"]:
+        if c in odds_df.columns:
+            odds_merge_cols.append(c)
 
     # Merge
     merged = matches.merge(
-        odds_df[["_match_date", "_w_name_norm", "_l_name_norm"] +
-                [c for c in odds_df.columns if c.startswith("odds_") or c == "implied_prob_w"]],
+        odds_df[odds_merge_cols].drop_duplicates(
+            subset=["_match_date", "_w_name_norm", "_l_name_norm"], keep="first"
+        ),
         on=["_match_date", "_w_name_norm", "_l_name_norm"],
         how="left",
     )
 
     # If direct merge coverage is low, try fuzzy date matching (±1 day)
-    coverage = merged["implied_prob_w"].notna().mean()
+    coverage = merged.get("implied_prob_w", pd.Series(dtype=float)).notna().mean()
     print(f"Odds merge coverage: {coverage:.1%}")
 
     if coverage < 0.3 and len(odds_df) > 0:
@@ -575,6 +625,14 @@ def _train_and_evaluate(
         for i, (name, imp) in enumerate(list(best_single[0].feature_importances.items())[:20]):
             print(f"  {i+1:2d}. {name}: {imp:.4f}")
 
+    # Stratified evaluation
+    from tennis_predictor.evaluation.metrics import stratified_evaluation, print_stratified_evaluation
+    test_meta = test_pairwise[["tourney_date", "tourney_level"]].copy()
+    test_meta["surface"] = pairwise[test_mask.values]["surface"].values if "surface" in pairwise.columns else "Unknown"
+    test_meta["round"] = pairwise[test_mask.values]["round"].values if "round" in pairwise.columns else "Unknown"
+    strat = stratified_evaluation(y_test, ensemble_pred, test_meta, label="Stacking Ensemble")
+    print_stratified_evaluation(strat)
+
     # Save best model
     model_path = PROCESSED_DIR / "model_ensemble.pkl"
     with open(model_path, "wb") as f:
@@ -594,4 +652,5 @@ def _train_and_evaluate(
         "best_stats": best_stats,
         "calibration": ev_ensemble["calibration"],
         "ensemble_weights": ensemble.base_model_weights,
+        "stratified": strat,
     }

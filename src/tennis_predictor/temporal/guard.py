@@ -225,6 +225,10 @@ class TemporalGuard:
         # Intransitivity score (from GNN if available, else NaN)
         features["intransitivity_score"] = match.get("intransitivity_score", np.nan)
 
+        # === ADVANCED FEATURES (40+ new) ===
+        from tennis_predictor.features.advanced import extract_advanced_features
+        features.update(extract_advanced_features(match, self.state, features))
+
         return features
 
     def update_state(self, match: pd.Series, result: int) -> None:
@@ -529,6 +533,20 @@ class TemporalGuard:
         self.state.elo_surface[(winner_id, surface)] = surf_w + surf_k_w * (1 - expected_surf)
         self.state.elo_surface[(loser_id, surface)] = surf_l + surf_k_l * (0 - (1 - expected_surf))
 
+        # Serve Elo (uses overall K-factor but separate rating pool)
+        serve_w = self.state.elo_serve.get(winner_id, init)
+        serve_l = self.state.elo_serve.get(loser_id, init)
+        expected_serve = 1.0 / (1.0 + 10 ** ((serve_l - serve_w) / 400))
+        self.state.elo_serve[winner_id] = serve_w + k_w * 0.8 * (1 - expected_serve)
+        self.state.elo_serve[loser_id] = serve_l + k_l * 0.8 * (0 - (1 - expected_serve))
+
+        # Return Elo
+        ret_w = self.state.elo_return.get(winner_id, init)
+        ret_l = self.state.elo_return.get(loser_id, init)
+        expected_ret = 1.0 / (1.0 + 10 ** ((ret_l - ret_w) / 400))
+        self.state.elo_return[winner_id] = ret_w + k_w * 0.8 * (1 - expected_ret)
+        self.state.elo_return[loser_id] = ret_l + k_l * 0.8 * (0 - (1 - expected_ret))
+
     def _update_glicko2(
         self, winner_id: str, loser_id: str, match_date: pd.Timestamp
     ) -> None:
@@ -666,19 +684,66 @@ class TemporalGuard:
             bp_saved = match.get(f"{sp}bpSaved", np.nan)
             bp_faced = match.get(f"{sp}bpFaced", np.nan)
 
+            # Additional stats
+            df = match.get(f"{sp}df", np.nan)
+            second_won = match.get(f"{sp}2ndWon", np.nan)
+            sv_gms = match.get(f"{sp}SvGms", np.nan)
+            bp_convert_faced = match.get(
+                f"{'l_' if is_winner else 'w_'}bpFaced", np.nan
+            )
+            bp_convert_saved = match.get(
+                f"{'l_' if is_winner else 'w_'}bpSaved", np.nan
+            )
+
+            second_serve_pts = (svpt - first_in
+                                if _valid(svpt) and _valid(first_in) else np.nan)
+            opp_svpt = match.get(f"{'l_' if is_winner else 'w_'}svpt", np.nan)
+            opp_1st_won = match.get(f"{'l_' if is_winner else 'w_'}1stWon", np.nan)
+            opp_2nd_won = match.get(f"{'l_' if is_winner else 'w_'}2ndWon", np.nan)
+
             record = {
                 "date": match_date,
                 "surface": surface,
                 "won": won,
                 "round_order": ROUND_ORDER.get(round_name, 0),
+                "tourney_level": match.get("tourney_level", "A"),
+                "best_of": match.get("best_of", 3),
+                "retirement": bool(match.get("retirement", False)),
+                "minutes": match.get("minutes", np.nan),
                 "first_serve_pct": (first_in / svpt if _valid(svpt) and _valid(first_in)
                                     and svpt > 0 else np.nan),
                 "first_serve_won_pct": (first_won / first_in if _valid(first_won)
                                         and _valid(first_in) and first_in > 0 else np.nan),
+                "second_serve_won_pct": (second_won / second_serve_pts
+                                         if _valid(second_won) and _valid(second_serve_pts)
+                                         and second_serve_pts > 0 else np.nan),
                 "bp_save_pct": (bp_saved / bp_faced if _valid(bp_saved) and _valid(bp_faced)
                                 and bp_faced > 0 else np.nan),
                 "ace_rate": (ace / svpt if _valid(ace) and _valid(svpt)
                              and svpt > 0 else np.nan),
+                "df_rate": (df / svpt if _valid(df) and _valid(svpt)
+                            and svpt > 0 else np.nan),
+                "serve_efficiency": ((ace - df) / svpt
+                                     if _valid(ace) and _valid(df) and _valid(svpt)
+                                     and svpt > 0 else np.nan),
+                "serve_pts_won_pct": ((first_won + second_won) / svpt
+                                      if _valid(first_won) and _valid(second_won)
+                                      and _valid(svpt) and svpt > 0 else np.nan),
+                "return_pts_won_pct": (
+                    (opp_svpt - opp_1st_won - opp_2nd_won) / opp_svpt
+                    if _valid(opp_svpt) and _valid(opp_1st_won) and _valid(opp_2nd_won)
+                    and opp_svpt > 0 else np.nan
+                ),
+                "hold_pct": (
+                    1.0 - (bp_faced - bp_saved) / sv_gms
+                    if _valid(bp_faced) and _valid(bp_saved) and _valid(sv_gms) and sv_gms > 0
+                    else np.nan
+                ),
+                "break_pct": (
+                    (bp_convert_faced - bp_convert_saved) / bp_convert_faced
+                    if _valid(bp_convert_faced) and _valid(bp_convert_saved)
+                    and bp_convert_faced > 0 else np.nan
+                ),
                 "opponent_rank": (match.get("p2_rank" if prefix == "p1" else "p1_rank", np.nan)),
             }
 
