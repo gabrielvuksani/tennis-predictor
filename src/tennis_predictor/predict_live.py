@@ -38,7 +38,7 @@ def run_live_predictions() -> list[dict]:
     seen = set()
     upcoming = []
     for m in all_matches:
-        key = (m["player1"], m["player2"])
+        key = tuple(sorted([m["player1"], m["player2"]]))
         if key not in seen:
             seen.add(key)
             upcoming.append(m)
@@ -94,6 +94,14 @@ def run_live_predictions() -> list[dict]:
 
     # 4. Save
     save_predictions(predictions)
+
+    # Regenerate site with predictions + model stats
+    from tennis_predictor.web.generate import generate_site
+    stats = {}
+    stats_file = PROCESSED_DIR / "latest_stats.json"
+    if stats_file.exists():
+        stats = json.loads(stats_file.read_text())
+    generate_site(predictions=predictions, model_stats=stats)
 
     return predictions
 

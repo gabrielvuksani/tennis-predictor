@@ -19,7 +19,6 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import StratifiedKFold
 
 from tennis_predictor.models.gbm import (
     CatBoostPredictor,

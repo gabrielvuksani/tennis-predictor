@@ -12,14 +12,25 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, ClassifierMixin
 
-from tennis_predictor.config import MODEL_CONFIG
+from tennis_predictor.hyperparams import HP
 
 
 class XGBoostPredictor(BaseEstimator, ClassifierMixin):
     """XGBoost classifier with tennis-tuned defaults."""
 
     def __init__(self, **kwargs):
-        self.params = {**MODEL_CONFIG["xgboost"], **kwargs}
+        params = {
+            "n_estimators": HP.model.xgb_n_estimators,
+            "max_depth": HP.model.xgb_max_depth,
+            "learning_rate": HP.model.xgb_learning_rate,
+            "subsample": HP.model.xgb_subsample,
+            "colsample_bytree": HP.model.xgb_colsample_bytree,
+            "min_child_weight": HP.model.xgb_min_child_weight,
+            "reg_alpha": HP.model.xgb_reg_alpha,
+            "reg_lambda": HP.model.xgb_reg_lambda,
+            "early_stopping_rounds": HP.model.xgb_early_stopping,
+        }
+        self.params = {**params, **kwargs}
         self.model = None
 
     def fit(self, X, y, eval_set=None, sample_weight=None, **kwargs):
@@ -78,7 +89,17 @@ class LightGBMPredictor(BaseEstimator, ClassifierMixin):
     """LightGBM classifier with tennis-tuned defaults."""
 
     def __init__(self, **kwargs):
-        self.params = {**MODEL_CONFIG["lightgbm"], **kwargs}
+        params = {
+            "n_estimators": HP.model.lgb_n_estimators,
+            "max_depth": HP.model.lgb_max_depth,
+            "learning_rate": HP.model.lgb_learning_rate,
+            "subsample": HP.model.lgb_subsample,
+            "colsample_bytree": HP.model.lgb_colsample_bytree,
+            "min_child_samples": HP.model.lgb_min_child_samples,
+            "reg_alpha": HP.model.lgb_reg_alpha,
+            "reg_lambda": HP.model.lgb_reg_lambda,
+        }
+        self.params = {**params, **kwargs}
         self.model = None
 
     def fit(self, X, y, eval_set=None, sample_weight=None, **kwargs):
@@ -127,7 +148,15 @@ class CatBoostPredictor(BaseEstimator, ClassifierMixin):
     """CatBoost classifier with tennis-tuned defaults."""
 
     def __init__(self, **kwargs):
-        self.params = {**MODEL_CONFIG["catboost"], **kwargs}
+        params = {
+            "iterations": HP.model.cat_iterations,
+            "depth": HP.model.cat_depth,
+            "learning_rate": HP.model.cat_learning_rate,
+            "l2_leaf_reg": HP.model.cat_l2_leaf_reg,
+            "subsample": HP.model.cat_subsample,
+            "early_stopping_rounds": HP.model.cat_early_stopping,
+        }
+        self.params = {**params, **kwargs}
         self.model = None
 
     def fit(self, X, y, eval_set=None, sample_weight=None, **kwargs):

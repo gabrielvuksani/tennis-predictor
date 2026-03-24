@@ -553,11 +553,12 @@ class TemporalGuard:
         self.state.elo[loser_id] = elo_l + k_l * ((1 - actual_score) - (1 - expected_w))
 
         # Surface-specific Elo
+        from tennis_predictor.hyperparams import HP as _HP
         surf_w = self.state.elo_surface.get((winner_id, surface), init)
         surf_l = self.state.elo_surface.get((loser_id, surface), init)
         expected_surf = 1.0 / (1.0 + 10 ** ((surf_l - surf_w) / 400))
-        surf_k_w = k_w * 1.2  # Slightly higher K for surface (less data)
-        surf_k_l = k_l * 1.2
+        surf_k_w = k_w * _HP.elo.surface_k_multiplier
+        surf_k_l = k_l * _HP.elo.surface_k_multiplier
         self.state.elo_surface[(winner_id, surface)] = surf_w + surf_k_w * (actual_score - expected_surf)
         self.state.elo_surface[(loser_id, surface)] = surf_l + surf_k_l * ((1 - actual_score) - (1 - expected_surf))
 
@@ -565,15 +566,15 @@ class TemporalGuard:
         serve_w = self.state.elo_serve.get(winner_id, init)
         serve_l = self.state.elo_serve.get(loser_id, init)
         expected_serve = 1.0 / (1.0 + 10 ** ((serve_l - serve_w) / 400))
-        self.state.elo_serve[winner_id] = serve_w + k_w * 0.8 * (actual_score - expected_serve)
-        self.state.elo_serve[loser_id] = serve_l + k_l * 0.8 * ((1 - actual_score) - (1 - expected_serve))
+        self.state.elo_serve[winner_id] = serve_w + k_w * _HP.elo.serve_k_multiplier * (actual_score - expected_serve)
+        self.state.elo_serve[loser_id] = serve_l + k_l * _HP.elo.serve_k_multiplier * ((1 - actual_score) - (1 - expected_serve))
 
         # Return Elo
         ret_w = self.state.elo_return.get(winner_id, init)
         ret_l = self.state.elo_return.get(loser_id, init)
         expected_ret = 1.0 / (1.0 + 10 ** ((ret_l - ret_w) / 400))
-        self.state.elo_return[winner_id] = ret_w + k_w * 0.8 * (actual_score - expected_ret)
-        self.state.elo_return[loser_id] = ret_l + k_l * 0.8 * ((1 - actual_score) - (1 - expected_ret))
+        self.state.elo_return[winner_id] = ret_w + k_w * _HP.elo.serve_k_multiplier * (actual_score - expected_ret)
+        self.state.elo_return[loser_id] = ret_l + k_l * _HP.elo.serve_k_multiplier * ((1 - actual_score) - (1 - expected_ret))
 
     def _update_glicko2(
         self, winner_id: str, loser_id: str, match_date: pd.Timestamp
