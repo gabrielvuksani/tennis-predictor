@@ -168,6 +168,17 @@ def load_matches(
             f"No match files found in {SACKMANN_DIR}. Run clone_or_update_repo() first."
         )
 
+    # Supplement with TML Database (2025-2026 data that Sackmann is missing)
+    try:
+        from tennis_predictor.data.tml import load_tml_matches
+        tml = load_tml_matches()
+        if len(tml) > 0:
+            valid_cols = [c for c in MATCH_COLUMNS if c in tml.columns]
+            tml_clean = tml[valid_cols]
+            frames.append(tml_clean)
+    except Exception as e:
+        print(f"Note: TML data unavailable ({e})")
+
     matches = pd.concat(frames, ignore_index=True)
 
     # Parse dates

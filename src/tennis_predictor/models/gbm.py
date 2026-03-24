@@ -34,6 +34,12 @@ class XGBoostPredictor(BaseEstimator, ClassifierMixin):
                   if k != "early_stopping_rounds"}
         early_stopping = self.params.get("early_stopping_rounds", 50)
 
+        # Apply monotone constraints for logical relationships
+        if "monotone_constraints" not in params and self.feature_names_:
+            constraints = _build_monotone_constraints(self.feature_names_)
+            if constraints:
+                params["monotone_constraints"] = constraints
+
         self.model = xgb.XGBClassifier(**params)
 
         fit_params = {}
@@ -168,6 +174,50 @@ class CatBoostPredictor(BaseEstimator, ClassifierMixin):
             zip(self.feature_names_, importances),
             key=lambda x: x[1], reverse=True
         ))
+
+
+def _build_monotone_constraints(feature_names: list[str]) -> tuple | None:
+    """Build monotone constraints for XGBoost.
+
+    Forces logical relationships: higher Elo diff = higher win probability.
+    Returns tuple of (1, -1, 0, ...) per feature, or None if not applicable.
+
+    1 = monotonically increasing (higher value → higher P(win))
+    -1 = monotonically decreasing
+    0 = no constraint
+    """
+    # Features that should increase win probability when they increase
+    increasing = {
+        "elo_diff", "surface_elo_diff", "elo_win_prob", "surface_elo_win_prob",
+        "glicko2_diff", "glicko2_uncertainty_diff", "serve_elo_diff", "return_elo_diff",
+        "h2h_p1_win_pct", "h2h_surface_p1_win_pct",
+        "diff_winrate_10", "diff_surface_winrate_10", "diff_dominance_20",
+        "diff_avg_1st_serve_won_10", "diff_avg_bp_save_10",
+        "diff_ewma_winrate", "diff_winrate_vs_top50",
+        "common_opp_winrate_diff", "form_velocity_diff",
+        "rank_points_diff", "log_rank_points_diff",
+        "odds_implied_p1", "sentiment_diff",
+    }
+
+    # Features that should decrease win probability when they increase
+    # (e.g., rank_diff: p1_rank - p2_rank; if p1 has higher rank number, worse)
+    decreasing = {
+        "rank_diff", "log_rank_diff",
+    }
+
+    constraints = []
+    for name in feature_names:
+        if name in increasing:
+            constraints.append(1)
+        elif name in decreasing:
+            constraints.append(-1)
+        else:
+            constraints.append(0)
+
+    # Only apply if we have some constrained features
+    if any(c != 0 for c in constraints):
+        return tuple(constraints)
+    return None
 
 
 def _prepare_features(X: pd.DataFrame | np.ndarray) -> pd.DataFrame:
