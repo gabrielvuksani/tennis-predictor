@@ -183,6 +183,9 @@ def _predict_match(
     # Confidence level
     confidence = abs(prob_p1 - 0.5) * 2  # 0 = toss-up, 1 = certain
 
+    # === Build detailed analysis data ===
+    detail = _build_match_detail(guard_state, p1_id, p2_id, p1_name, p2_name, surface)
+
     return {
         "player1": p1_name,
         "player2": p2_name,
@@ -199,6 +202,144 @@ def _predict_match(
         "sharp_signal": match.get("sharp_signal", 0),
         "model": model_used,
         "generated_at": datetime.now().isoformat(),
+        "detail": detail,
+    }
+
+
+def _build_match_detail(guard_state, p1_id, p2_id, p1_name, p2_name, surface) -> dict:
+    """Extract comprehensive stats for the match detail view."""
+    if guard_state is None:
+        return {}
+
+    from tennis_predictor.hyperparams import HP
+    init = HP.elo.initial_rating
+
+    def _player_stats(pid, name):
+        """Extract all available stats for a player."""
+        if not pid:
+            return {"name": name}
+
+        history = guard_state.match_history.get(pid, [])
+        recent = history[-10:] if history else []
+        recent_20 = history[-20:] if history else []
+
+        # Elo ratings
+        elo = guard_state.elo.get(pid, init)
+        surf_elo = guard_state.elo_surface.get((pid, surface), init)
+        serve_elo = guard_state.elo_serve.get(pid, init)
+        return_elo = guard_state.elo_return.get(pid, init)
+
+        # Glicko-2
+        g2 = guard_state.glicko2.get(pid, (init, 350, 0.06))
+
+        # Recent form
+        wins_5 = sum(1 for m in history[-5:] if m.get("won")) if len(history) >= 5 else None
+        wins_10 = sum(1 for m in recent if m.get("won")) if len(recent) >= 5 else None
+
+        # Surface form
+        surf_matches = [m for m in recent_20 if m.get("surface") == surface]
+        surf_wins = sum(1 for m in surf_matches if m.get("won")) if surf_matches else None
+        surf_total = len(surf_matches) if surf_matches else 0
+
+        # Serve stats (averages from last 20)
+        def _avg(key):
+            vals = [m.get(key) for m in recent_20 if m.get(key) is not None and not (isinstance(m.get(key), float) and np.isnan(m.get(key)))]
+            return round(float(np.mean(vals)), 3) if vals else None
+
+        # Streaks
+        win_streak = 0
+        for m in reversed(history):
+            if m.get("won"):
+                win_streak += 1
+            else:
+                break
+
+        loss_streak = 0
+        for m in reversed(history):
+            if not m.get("won"):
+                loss_streak += 1
+            else:
+                break
+
+        # Days since last match
+        days_since = None
+        if history:
+            last_date = history[-1].get("date")
+            if last_date is not None:
+                try:
+                    days_since = (pd.Timestamp.now() - pd.Timestamp(last_date)).days
+                except Exception:
+                    pass
+
+        return {
+            "name": name,
+            "elo": round(elo),
+            "surface_elo": round(surf_elo),
+            "serve_elo": round(serve_elo),
+            "return_elo": round(return_elo),
+            "glicko2_rating": round(g2[0]),
+            "glicko2_rd": round(g2[1]),
+            "total_matches": len(history),
+            "form_last5": f"{wins_5}/{5}" if wins_5 is not None else None,
+            "form_last10": f"{wins_10}/{len(recent)}" if wins_10 is not None else None,
+            "surface_record": f"{surf_wins}/{surf_total}" if surf_wins is not None else None,
+            "win_streak": win_streak,
+            "loss_streak": loss_streak,
+            "days_since_last": days_since,
+            "first_serve_pct": _avg("first_serve_pct"),
+            "first_serve_won": _avg("first_serve_won_pct"),
+            "second_serve_won": _avg("second_serve_won_pct"),
+            "ace_rate": _avg("ace_rate"),
+            "df_rate": _avg("df_rate"),
+            "bp_save_pct": _avg("bp_save_pct"),
+            "return_pts_won": _avg("return_pts_won_pct"),
+            "serve_pts_won": _avg("serve_pts_won_pct"),
+        }
+
+    p1_stats = _player_stats(p1_id, p1_name)
+    p2_stats = _player_stats(p2_id, p2_name)
+
+    # H2H record
+    h2h = {"total": 0, "p1_wins": 0, "p2_wins": 0}
+    if p1_id and p2_id:
+        key = (min(p1_id, p2_id), max(p1_id, p2_id))
+        h2h_data = guard_state.h2h.get(key, {})
+        if h2h_data:
+            total = h2h_data.get("total", 0)
+            if key[0] == p1_id:
+                p1w = h2h_data.get("wins_a", 0)
+            else:
+                p1w = h2h_data.get("wins_b", 0)
+            h2h = {"total": total, "p1_wins": p1w, "p2_wins": total - p1w}
+
+    # Key factors (what's driving this prediction)
+    factors = []
+    if p1_stats.get("elo") and p2_stats.get("elo"):
+        diff = p1_stats["elo"] - p2_stats["elo"]
+        if abs(diff) > 200:
+            stronger = p1_name if diff > 0 else p2_name
+            factors.append(f"Elo advantage: {stronger} ({abs(diff)} pts)")
+        surf_diff = (p1_stats.get("surface_elo", 0) or 0) - (p2_stats.get("surface_elo", 0) or 0)
+        if abs(surf_diff) > 150:
+            stronger = p1_name if surf_diff > 0 else p2_name
+            factors.append(f"Surface specialist: {stronger} on {surface}")
+    if p1_stats.get("win_streak", 0) >= 5:
+        factors.append(f"{p1_name} on {p1_stats['win_streak']}-match win streak")
+    if p2_stats.get("win_streak", 0) >= 5:
+        factors.append(f"{p2_name} on {p2_stats['win_streak']}-match win streak")
+    if h2h["total"] >= 3:
+        leader = p1_name if h2h["p1_wins"] > h2h["p2_wins"] else p2_name
+        factors.append(f"H2H: {leader} leads {max(h2h['p1_wins'],h2h['p2_wins'])}-{min(h2h['p1_wins'],h2h['p2_wins'])}")
+    if p1_stats.get("days_since_last") and p1_stats["days_since_last"] > 14:
+        factors.append(f"Rust risk: {p1_name} hasn't played in {p1_stats['days_since_last']} days")
+    if p2_stats.get("days_since_last") and p2_stats["days_since_last"] > 14:
+        factors.append(f"Rust risk: {p2_name} hasn't played in {p2_stats['days_since_last']} days")
+
+    return {
+        "p1": p1_stats,
+        "p2": p2_stats,
+        "h2h": h2h,
+        "factors": factors[:5],  # Top 5 key factors
     }
 
 

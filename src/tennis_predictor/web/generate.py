@@ -165,6 +165,35 @@ a{color:var(--t2);text-decoration:none}a:hover{color:var(--green)}
 .tag.conf-h{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
 .tag.conf-m{background:var(--amber-bg);color:var(--amber)}
 
+/* === DETAIL PANEL === */
+.mc{cursor:pointer}
+.mc-detail{
+  display:none;grid-template-columns:1fr 1fr;gap:1rem;
+  padding:1.2rem 1.5rem 1rem;border-top:1px solid var(--border);
+  background:var(--surface);border-radius:0 0 var(--r) var(--r);
+  margin:-1px -1px 0;font-size:.78rem;
+}
+.mc.open .mc-detail{display:grid}
+.mc.open{border-radius:var(--r) var(--r) 0 0}
+
+.detail-col h4{font-size:.72rem;color:var(--green);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:.6rem}
+.detail-row{display:flex;justify-content:space-between;padding:.25rem 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.detail-row .lbl{color:var(--t3);font-weight:500}
+.detail-row .val{color:var(--t);font-weight:600}
+.detail-row .val.good{color:var(--green)}
+.detail-row .val.bad{color:#ef4444}
+
+.h2h-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin:.5rem 0;background:var(--border)}
+.h2h-fill{height:100%;background:var(--green)}
+
+.factors{grid-column:1/-1;padding-top:.5rem;border-top:1px solid var(--border)}
+.factors h4{font-size:.72rem;color:var(--amber);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:.5rem}
+.factor{display:flex;align-items:center;gap:.4rem;padding:.2rem 0;font-size:.76rem;color:var(--t2)}
+.factor::before{content:'>';color:var(--green);font-weight:700;font-size:.65rem}
+
+.mc-expand{font-size:.6rem;color:var(--t3);text-align:center;padding-top:.3rem;letter-spacing:.04em;text-transform:uppercase}
+.mc.open .mc-expand{display:none}
+
 /* === STATS === */
 .grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.6rem}
 .stat{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.2rem}
@@ -214,6 +243,12 @@ async function init(){
   }catch(e){document.getElementById('cards').innerHTML='<div class="empty"><h3>Could not load</h3></div>'}
 }
 
+// Toggle match detail on click
+document.addEventListener('click',e=>{
+  const mc=e.target.closest('.mc');
+  if(mc) mc.classList.toggle('open');
+});
+
 function renderCards(list){
   const el=document.getElementById('cards');
   const ct=document.getElementById('cnt');
@@ -239,26 +274,82 @@ function renderCards(list){
     const t=p.tournament||'';
     const s=p.surface||'';
 
+    // Build detail panel
+    const d=p.detail||{};
+    const wp=fav?d.p1||{}:d.p2||{};  // winner stats
+    const lp=fav?d.p2||{}:d.p1||{};  // loser stats
+    const h2h=d.h2h||{};
+    const factors=d.factors||[];
+
+    const detailHtml=
+      '<div class="mc-detail">'+
+        '<div class="detail-col">'+
+          '<h4>'+esc(winName)+'</h4>'+
+          row('Elo Rating',wp.elo)+
+          row('Surface Elo',wp.surface_elo)+
+          row('Serve Elo',wp.serve_elo)+
+          row('Return Elo',wp.return_elo)+
+          row('Last 5',wp.form_last5)+
+          row('Last 10',wp.form_last10)+
+          row('On '+s,wp.surface_record)+
+          row('Win Streak',wp.win_streak||0)+
+          row('1st Serve %',pct(wp.first_serve_pct))+
+          row('1st Serve Won',pct(wp.first_serve_won))+
+          row('Return Pts Won',pct(wp.return_pts_won))+
+          row('BP Save %',pct(wp.bp_save_pct))+
+          row('Days Since Match',wp.days_since_last)+
+        '</div>'+
+        '<div class="detail-col">'+
+          '<h4>'+esc(loseName)+'</h4>'+
+          row('Elo Rating',lp.elo)+
+          row('Surface Elo',lp.surface_elo)+
+          row('Serve Elo',lp.serve_elo)+
+          row('Return Elo',lp.return_elo)+
+          row('Last 5',lp.form_last5)+
+          row('Last 10',lp.form_last10)+
+          row('On '+s,lp.surface_record)+
+          row('Win Streak',lp.win_streak||0)+
+          row('1st Serve %',pct(lp.first_serve_pct))+
+          row('1st Serve Won',pct(lp.first_serve_won))+
+          row('Return Pts Won',pct(lp.return_pts_won))+
+          row('BP Save %',pct(lp.bp_save_pct))+
+          row('Days Since Match',lp.days_since_last)+
+        '</div>'+
+        (h2h.total?'<div class="factors"><h4>Head to Head ('+h2h.total+' matches)</h4>'+
+          '<div class="h2h-bar"><div class="h2h-fill" style="width:'+(h2h.total?Math.round(h2h.p1_wins/h2h.total*100):50)+'%"></div></div>'+
+          '<div class="detail-row"><span class="lbl">'+esc(p.player1)+'</span><span class="val">'+h2h.p1_wins+' wins</span></div>'+
+          '<div class="detail-row"><span class="lbl">'+esc(p.player2)+'</span><span class="val">'+h2h.p2_wins+' wins</span></div>'+
+        '</div>':'')+
+        (factors.length?'<div class="factors"><h4>Key Factors</h4>'+
+          factors.map(f=>'<div class="factor">'+esc(f)+'</div>').join('')+
+        '</div>':'')+
+      '</div>';
+
     return '<div class="mc'+(isHigh?' high':'')+'">'+
-      '<div class="mc-winner">'+
-        '<div class="name">'+esc(winName)+' <span class="arrow">&#x276F;</span></div>'+
-        (winRank?'<div class="rank">#'+winRank+' ATP</div>':'')+
-      '</div>'+
-      '<div class="mc-prob">'+
-        '<div class="big">'+winPct+'%</div>'+
-        '<div class="bar-wrap"><div class="bar-fill" style="width:'+winPct+'%"></div></div>'+
-        '<div class="vs">vs '+losePct+'%</div>'+
-        '<div class="mc-tags">'+
-          (t?'<span class="tag t">'+esc(t)+'</span>':'')+
-          (s?'<span class="tag t">'+esc(s)+'</span>':'')+
-          confTag+
+      '<div style="display:flex;align-items:center;gap:1.2rem;width:100%">'+
+        '<div class="mc-winner">'+
+          '<div class="name">'+esc(winName)+' <span class="arrow">&#x276F;</span></div>'+
+          (winRank?'<div class="rank">#'+winRank+' ATP</div>':'')+
+        '</div>'+
+        '<div class="mc-prob">'+
+          '<div class="big">'+winPct+'%</div>'+
+          '<div class="bar-wrap"><div class="bar-fill" style="width:'+winPct+'%"></div></div>'+
+          '<div class="vs">vs '+losePct+'%</div>'+
+          '<div class="mc-tags">'+
+            (t?'<span class="tag t">'+esc(t)+'</span>':'')+
+            (s?'<span class="tag t">'+esc(s)+'</span>':'')+
+            confTag+
+          '</div>'+
+        '</div>'+
+        '<div class="mc-loser">'+
+          '<div class="name">'+esc(loseName)+'</div>'+
+          (loseRank?'<div class="rank">#'+loseRank+' ATP</div>':'')+
         '</div>'+
       '</div>'+
-      '<div class="mc-loser">'+
-        '<div class="name">'+esc(loseName)+'</div>'+
-        (loseRank?'<div class="rank">#'+loseRank+' ATP</div>':'')+
-      '</div>'+
+      '<div class="mc-expand">TAP FOR ANALYSIS</div>'+
+      detailHtml+
     '</div>'}).join('')+'</div>';
+}
 }
 
 function renderPerf(s){
@@ -300,6 +391,11 @@ function renderCal(c){
   x.save();x.translate(10,p.t+ch/2);x.rotate(-Math.PI/2);x.fillText('Actual',0,0);x.restore();
 }
 
-function esc(s){return s?s.replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
+function row(lbl,val){
+  if(val===null||val===undefined) return '';
+  return '<div class="detail-row"><span class="lbl">'+lbl+'</span><span class="val">'+val+'</span></div>';
+}
+function pct(v){return v!=null?Math.round(v*100)+'%':null}
+function esc(s){return s?String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
 init();
 """)
