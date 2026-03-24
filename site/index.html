@@ -3,50 +3,108 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tennis Predictor</title>
+    <title>Tennis Predictor — AI Match Predictions</title>
+    <meta name="description" content="ATP tennis match predictions powered by machine learning. 219 features, self-learning Elo, calibrated probabilities.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
-    <header>
-        <h1>Tennis Predictor</h1>
-        <p class="subtitle">ATP Match Predictions &mdash; Calibrated Probabilities</p>
-    </header>
+    <div class="app">
+        <header class="header" role="banner">
+            <div class="header-inner">
+                <div class="logo">
+                    <span class="logo-icon" aria-hidden="true">&#9878;</span>
+                    <div>
+                        <h1>Tennis Predictor</h1>
+                        <p class="tagline">AI-Powered ATP Match Predictions</p>
+                    </div>
+                </div>
+                <div class="header-meta" id="header-meta" aria-live="polite">
+                    <span class="pulse" aria-hidden="true"></span>
+                    <span class="meta-text">Loading...</span>
+                </div>
+            </div>
+        </header>
 
-    <main>
-        <section id="status" class="card">
-            <h2>System Status</h2>
-            <div id="status-content">Loading...</div>
-        </section>
+        <main class="main">
+            <!-- Predictions Section -->
+            <section class="section" id="predictions-section" aria-labelledby="pred-heading">
+                <div class="section-header">
+                    <h2 id="pred-heading">Today's Predictions</h2>
+                    <span class="badge" id="pred-count">—</span>
+                </div>
+                <div id="predictions-content" class="predictions-list" role="list">
+                    <div class="skeleton-loader">
+                        <div class="skeleton-card"></div>
+                        <div class="skeleton-card"></div>
+                        <div class="skeleton-card"></div>
+                    </div>
+                </div>
+            </section>
 
-        <section id="predictions" class="card">
-            <h2>Upcoming Predictions</h2>
-            <div id="predictions-content">Loading...</div>
-        </section>
+            <!-- Stats Grid -->
+            <section class="section" aria-labelledby="stats-heading">
+                <h2 id="stats-heading">Model Performance</h2>
+                <div class="stats-grid" id="stats-content">
+                    <div class="stat-card skeleton-stat"></div>
+                    <div class="stat-card skeleton-stat"></div>
+                    <div class="stat-card skeleton-stat"></div>
+                    <div class="stat-card skeleton-stat"></div>
+                </div>
+            </section>
 
-        <section id="performance" class="card">
-            <h2>Model Performance</h2>
-            <div class="metrics-grid" id="metrics-content">Loading...</div>
-        </section>
+            <!-- Calibration Chart -->
+            <section class="section" aria-labelledby="cal-heading">
+                <h2 id="cal-heading">Calibration</h2>
+                <p class="section-desc">When the model says 70%, it should be right 70% of the time. Points near the diagonal = well calibrated.</p>
+                <div class="chart-container">
+                    <canvas id="calibration-chart" width="600" height="400" role="img" aria-label="Calibration plot showing predicted vs actual win rates"></canvas>
+                </div>
+            </section>
 
-        <section id="calibration" class="card">
-            <h2>Calibration Plot</h2>
-            <p class="desc">A calibrated model's predicted probabilities match actual outcomes.
-            The diagonal line represents perfect calibration.</p>
-            <canvas id="calibration-chart" width="500" height="400"></canvas>
-        </section>
+            <!-- How It Works -->
+            <section class="section" aria-labelledby="how-heading">
+                <h2 id="how-heading">How It Works</h2>
+                <div class="features-grid">
+                    <div class="feature">
+                        <div class="feature-icon" aria-hidden="true">&#9889;</div>
+                        <h3>219 Features</h3>
+                        <p>Elo, Glicko-2, serve stats, fatigue, weather, court speed, handedness, intransitivity, and more.</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon" aria-hidden="true">&#9881;</div>
+                        <h3>Self-Learning</h3>
+                        <p>Ratings update after every match. The model retrains daily on expanding data. Drift detection triggers emergency retrains.</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon" aria-hidden="true">&#128274;</div>
+                        <h3>Zero Leakage</h3>
+                        <p>TemporalGuard ensures no future data leaks into predictions. The #1 flaw that killed other models.</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon" aria-hidden="true">&#127919;</div>
+                        <h3>Calibrated</h3>
+                        <p>Optimized for Brier score, not accuracy. When we say 60%, we mean it. ECE &lt; 0.02.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
 
-        <section id="recent" class="card">
-            <h2>Recent Results</h2>
-            <div id="recent-content">Loading...</div>
-        </section>
-    </main>
-
-    <footer>
-        <p>Built with temporal integrity. No data leakage. Calibration over accuracy.</p>
-        <p>Data: <a href="https://github.com/JeffSackmann/tennis_atp">JeffSackmann/tennis_atp</a>
-         | Weather: <a href="https://open-meteo.com/">Open-Meteo</a>
-         | Court Speed: <a href="https://courtspeed.com/">CourtSpeed.com</a></p>
-    </footer>
+        <footer class="footer" role="contentinfo">
+            <div class="footer-inner">
+                <p>308,787 matches &middot; 9,279 players &middot; Updated twice daily</p>
+                <p class="footer-links">
+                    <a href="https://github.com/gabrielvuksani/tennis-predictor">GitHub</a>
+                    <span aria-hidden="true">&middot;</span>
+                    <a href="https://github.com/JeffSackmann/tennis_atp">Data: JeffSackmann</a>
+                    <span aria-hidden="true">&middot;</span>
+                    <a href="https://open-meteo.com/">Weather: Open-Meteo</a>
+                </p>
+            </div>
+        </footer>
+    </div>
 
     <script src="assets/js/app.js"></script>
 </body>
