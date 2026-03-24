@@ -1,0 +1,105 @@
+name: Weekly Full Retrain
+
+on:
+  schedule:
+    # Run every Sunday at 03:00 UTC (overnight, when no matches)
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      start_year:
+        description: 'First year of training data'
+        required: false
+        default: '1991'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "weekly-retrain"
+  cancel-in-progress: false
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install xlrd openpyxl rapidfuzz
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/raw/tennis_atp/
+            data/raw/odds/
+            data/cache/
+          key: data-cache-${{ github.sha }}
+          restore-keys: |
+            data-cache-
+
+      - name: Run full pipeline
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: |
+          python -c "
+          from tennis_predictor.pipeline import run_full_pipeline
+          results = run_full_pipeline(
+              start_year=${{ github.event.inputs.start_year || '1991' }},
+              tour_level_only=False,
+              test_year=2023,
+              fetch_weather=True,
+              fetch_court_speed=True,
+              fetch_odds=True,
+              compute_intransitivity=True,
+          )
+          import json
+          from tennis_predictor.config import PROCESSED_DIR
+          stats = results.get('best_stats', {})
+          (PROCESSED_DIR / 'latest_stats.json').write_text(json.dumps(stats, indent=2))
+          "
+
+      - name: Build player lookup
+        run: |
+          python -c "
+          from tennis_predictor.predict_live import build_player_lookup
+          build_player_lookup()
+          "
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+
+      - name: Save cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            data/raw/tennis_atp/
+            data/raw/odds/
+            data/cache/
+          key: data-cache-${{ github.sha }}
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-model-${{ github.run_number }}
+          path: |
+            data/processed/model_*.pkl
+            data/processed/guard_state*.pkl
+            data/processed/latest_stats.json
+            data/processed/player_lookup.json
+          retention-days: 90

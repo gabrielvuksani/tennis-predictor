@@ -2,8 +2,9 @@ name: Daily Predictions
 
 on:
   schedule:
-    # Run daily at 06:00 UTC (before most European tournaments start)
+    # Run daily at 06:00 UTC (before European tournaments) and 14:00 UTC (before US)
     - cron: '0 6 * * *'
+    - cron: '0 14 * * *'
   workflow_dispatch:  # Manual trigger
 
 permissions:
@@ -11,9 +12,14 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: "daily-predictions"
+  cancel-in-progress: true
+
 jobs:
   predict:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -24,33 +30,48 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e .
 
-      - name: Update data sources
-        run: |
-          tennis-predict ingest --start-year 1991
+      - name: Restore model state
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/processed/model_*.pkl
+            data/processed/guard_state*.pkl
+            data/processed/matches.parquet
+            data/processed/features*.parquet
+            data/processed/targets*.npy
+            data/processed/online_state/
+            data/processed/player_lookup.json
+            data/raw/tennis_atp/
+            data/cache/
+          key: model-state-${{ github.sha }}
+          restore-keys: |
+            model-state-
 
-      - name: Build features
-        run: |
-          tennis-predict build-features --start-year 1991
-
-      - name: Train model
-        run: |
-          tennis-predict train --model ensemble --no-validate
-
-      - name: Generate predictions
-        run: |
-          tennis-predict predict --model ensemble
-
-      - name: Generate site
-        run: |
-          python -c "
-          from tennis_predictor.web.generate import generate_site
-          generate_site()
-          "
+      - name: Run daily update
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python scripts/daily_update.py
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
+
+      - name: Save model state
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            data/processed/model_*.pkl
+            data/processed/guard_state*.pkl
+            data/processed/matches.parquet
+            data/processed/features*.parquet
+            data/processed/targets*.npy
+            data/processed/online_state/
+            data/processed/player_lookup.json
+            data/raw/tennis_atp/
+            data/cache/
+          key: model-state-${{ github.sha }}
