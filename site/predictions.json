@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-24T18:15:47.757433",
+  "generated_at": "2026-03-24T18:23:48.969359",
   "model_version": "2.0.0",
   "predictions": [
     {
@@ -17,7 +17,7 @@
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "stacking_ensemble",
-      "generated_at": "2026-03-24T18:15:47.643854",
+      "generated_at": "2026-03-24T18:23:48.854026",
       "detail": {
         "p1": {
           "name": "Michelsen A.",
@@ -100,7 +100,7 @@
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "stacking_ensemble",
-      "generated_at": "2026-03-24T18:15:47.709478",
+      "generated_at": "2026-03-24T18:23:48.920194",
       "detail": {
         "p1": {
           "name": "Halys Q.",
@@ -175,14 +175,14 @@
       "tournament": "Miami (USA)",
       "surface": "Hard",
       "start_time": "2026-03-24T22:15:00+00:00",
-      "status": "upcoming",
+      "status": "live",
       "p1_rank": 53,
       "p2_rank": 20,
       "confidence": 0.574,
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "stacking_ensemble",
-      "generated_at": "2026-03-24T18:15:47.666504",
+      "generated_at": "2026-03-24T18:23:48.877159",
       "detail": {
         "p1": {
           "name": "Atmane T.",
@@ -264,7 +264,7 @@
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "stacking_ensemble",
-      "generated_at": "2026-03-24T18:15:47.731046",
+      "generated_at": "2026-03-24T18:23:48.941571",
       "detail": {
         "p1": {
           "name": "Landaluce M.",
@@ -344,7 +344,7 @@
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "stacking_ensemble",
-      "generated_at": "2026-03-24T18:15:47.688775",
+      "generated_at": "2026-03-24T18:23:48.898759",
       "detail": {
         "p1": {
           "name": "Humbert U.",
@@ -425,7 +425,7 @@
       "intransitivity_score": 0,
       "sharp_signal": 0.0,
       "model": "stacking_ensemble",
-      "generated_at": "2026-03-24T18:15:47.752433",
+      "generated_at": "2026-03-24T18:23:48.963250",
       "detail": {
         "p1": {
           "name": "Paul T.",
@@ -513,7 +513,7 @@
           "intransitivity_score": 0,
           "sharp_signal": 0.0,
           "model": "stacking_ensemble",
-          "generated_at": "2026-03-24T18:15:47.643854",
+          "generated_at": "2026-03-24T18:23:48.854026",
           "detail": {
             "p1": {
               "name": "Michelsen A.",
@@ -596,7 +596,7 @@
           "intransitivity_score": 0,
           "sharp_signal": 0.0,
           "model": "stacking_ensemble",
-          "generated_at": "2026-03-24T18:15:47.709478",
+          "generated_at": "2026-03-24T18:23:48.920194",
           "detail": {
             "p1": {
               "name": "Halys Q.",
@@ -671,14 +671,14 @@
           "tournament": "Miami (USA)",
           "surface": "Hard",
           "start_time": "2026-03-24T22:15:00+00:00",
-          "status": "upcoming",
+          "status": "live",
           "p1_rank": 53,
           "p2_rank": 20,
           "confidence": 0.574,
           "intransitivity_score": 0,
           "sharp_signal": 0.0,
           "model": "stacking_ensemble",
-          "generated_at": "2026-03-24T18:15:47.666504",
+          "generated_at": "2026-03-24T18:23:48.877159",
           "detail": {
             "p1": {
               "name": "Atmane T.",
@@ -760,7 +760,7 @@
           "intransitivity_score": 0,
           "sharp_signal": 0.0,
           "model": "stacking_ensemble",
-          "generated_at": "2026-03-24T18:15:47.731046",
+          "generated_at": "2026-03-24T18:23:48.941571",
           "detail": {
             "p1": {
               "name": "Landaluce M.",
@@ -840,7 +840,7 @@
           "intransitivity_score": 0,
           "sharp_signal": 0.0,
           "model": "stacking_ensemble",
-          "generated_at": "2026-03-24T18:15:47.688775",
+          "generated_at": "2026-03-24T18:23:48.898759",
           "detail": {
             "p1": {
               "name": "Humbert U.",
@@ -921,7 +921,7 @@
           "intransitivity_score": 0,
           "sharp_signal": 0.0,
           "model": "stacking_ensemble",
-          "generated_at": "2026-03-24T18:15:47.752433",
+          "generated_at": "2026-03-24T18:23:48.963250",
           "detail": {
             "p1": {
               "name": "Paul T.",

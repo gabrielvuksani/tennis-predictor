@@ -198,19 +198,20 @@ a{color:var(--t2);text-decoration:none}a:hover{color:var(--green)}
 .mc:hover{border-color:var(--green)}
 .mc.high{border-left:3px solid var(--green)}
 
-.mc-top{display:flex;align-items:center;gap:1rem;padding:1rem 1.3rem}
+.mc-top{padding:1rem 1.3rem}
+.mc-players{display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem}
 .mc-winner{flex:1;min-width:0}
-.mc-winner .name{font-size:1.05rem;font-weight:800;color:var(--green);display:flex;align-items:center;gap:.4rem;letter-spacing:-.01em}
-.mc-winner .name .arr{font-size:.6rem;opacity:.5}
-.mc-winner .rank{font-size:.67rem;color:var(--t2);margin-top:.1rem}
-.mc-prob{text-align:center;min-width:90px;flex-shrink:0}
-.mc-prob .big{font-size:1.6rem;font-weight:900;color:var(--green);letter-spacing:-.03em;line-height:1}
-.mc-prob .vs{font-size:.58rem;color:var(--t3);margin-top:.15rem}
-.bar-w{width:100%;height:3px;border-radius:2px;background:var(--border);overflow:hidden;margin-top:.3rem}
-.bar-f{height:100%;background:var(--green);border-radius:2px}
+.mc-winner .name{font-size:1.1rem;font-weight:800;color:var(--green);display:flex;align-items:center;gap:.35rem;letter-spacing:-.01em}
+.mc-winner .name .arr{font-size:.55rem;opacity:.4}
+.mc-winner .rank{font-size:.65rem;color:var(--t2);margin-top:.08rem;font-weight:500}
 .mc-loser{flex:1;min-width:0;text-align:right}
-.mc-loser .name{font-size:.88rem;font-weight:500;color:var(--t3)}
-.mc-loser .rank{font-size:.67rem;color:var(--t3);margin-top:.1rem}
+.mc-loser .name{font-size:.92rem;font-weight:500;color:var(--t3)}
+.mc-loser .rank{font-size:.65rem;color:var(--t3);margin-top:.08rem}
+
+/* FiveThirtyEight-style full-width probability bar */
+.mc-bar{display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:.72rem;font-weight:700}
+.mc-bar-w{background:var(--green);color:#fff;display:flex;align-items:center;padding:0 .6rem;min-width:40px;transition:width .5s ease}
+.mc-bar-l{background:var(--border);color:var(--t3);display:flex;align-items:center;justify-content:flex-end;padding:0 .6rem;flex:1}
 
 .mc-tags{display:flex;justify-content:center;gap:.3rem;padding:0 1.3rem .6rem;flex-wrap:wrap}
 .tag{font-size:.55rem;padding:.1rem .35rem;border-radius:5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
@@ -224,9 +225,15 @@ a{color:var(--t2);text-decoration:none}a:hover{color:var(--green)}
 .mc.open .mc-detail{display:grid}
 .mc.open .mc-hint{display:none}
 
+/* Sofascore-style centered stat comparison */
 .dc h4{font-size:.68rem;color:var(--green);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:.5rem}
 .dr{display:flex;justify-content:space-between;padding:.18rem 0;border-bottom:1px solid rgba(128,128,128,.08)}
 .dr .l{color:var(--t3)}.dr .v{font-weight:600}
+
+/* Centered comparison row (Sofascore-style) */
+.cmp{display:grid;grid-template-columns:1fr auto 1fr;gap:.3rem;padding:.22rem 0;border-bottom:1px solid rgba(128,128,128,.06);align-items:center;font-size:.75rem}
+.cmp .cv{font-weight:700;text-align:right}.cmp .cl{color:var(--t3);text-align:center;font-size:.65rem;font-weight:500;padding:0 .3rem;min-width:70px}.cmp .cv2{font-weight:700;text-align:left}
+.cmp .cv.better{color:var(--green)}.cmp .cv2.better{color:var(--green)}
 
 .h2h-section,.factors-section{grid-column:1/-1;padding-top:.5rem;border-top:1px solid var(--border)}
 .h2h-section h4,.factors-section h4{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:.4rem}
@@ -280,9 +287,9 @@ canvas{max-width:100%;height:auto!important}
 .foot{text-align:center;padding:1.5rem;font-size:.7rem;color:var(--t3);border-top:1px solid var(--border)}
 
 @media(max-width:700px){
-  .mc-top{flex-direction:column;text-align:center;gap:.5rem}
+  .mc-players{flex-direction:column;gap:.4rem}
   .mc-winner,.mc-loser{text-align:center}
-  .mc-prob{min-width:100%}
+  .mc-bar{height:24px;font-size:.65rem}
   .mc-detail{grid-template-columns:1fr}
   .grid4{grid-template-columns:1fr 1fr}
   .hero h1{font-size:1.6rem}
@@ -417,26 +424,27 @@ function renderCard(p){
 
   return '<div class="mc'+(isHi?' high':'')+'">'+
     '<div class="mc-top">'+
-      '<div class="mc-winner"><div class="name"><span class="plink" data-name="'+esc(wN)+'">'+esc(wN)+'</span> <span class="arr">&#x276F;</span></div>'+(wR?'<div class="rank">#'+wR+' ATP</div>':'')+'</div>'+
-      '<div class="mc-prob"><div class="big">'+wP+'%</div><div class="bar-w"><div class="bar-f" style="width:'+wP+'%"></div></div><div class="vs">vs '+lP+'%</div></div>'+
-      '<div class="mc-loser"><div class="name"><span class="plink" data-name="'+esc(lN)+'">'+esc(lN)+'</span></div>'+(lR?'<div class="rank">#'+lR+' ATP</div>':'')+'</div>'+
+      '<div class="mc-players">'+
+        '<div class="mc-winner"><div class="name"><span class="plink" data-name="'+esc(wN)+'">'+esc(wN)+'</span> <span class="arr">&#x276F;</span></div>'+(wR?'<div class="rank">#'+wR+' ATP</div>':'')+'</div>'+
+        '<div class="mc-loser"><div class="name"><span class="plink" data-name="'+esc(lN)+'">'+esc(lN)+'</span></div>'+(lR?'<div class="rank">#'+lR+' ATP</div>':'')+'</div>'+
+      '</div>'+
+      '<div class="mc-bar"><div class="mc-bar-w" style="width:'+wP+'%">'+esc(wN)+' '+wP+'%</div><div class="mc-bar-l">'+lP+'% '+esc(lN)+'</div></div>'+
     '</div>'+
     '<div class="mc-tags">'+(s?'<span class="tag t">'+esc(s)+'</span>':'')+cTag+mTag+'</div>'+
-    '<div class="mc-hint">Tap for analysis</div>'+
+    '<div class="mc-hint">Tap for full analysis</div>'+
     '<div class="mc-detail">'+
-      '<div class="dc"><h4>'+esc(wN)+'</h4>'+
-        dr('Elo',ws.elo)+dr('Surface',ws.surface_elo)+dr('Serve',ws.serve_elo)+dr('Return',ws.return_elo)+
-        dr('Form (5)',ws.form_last5)+dr('Surface W/L',ws.surface_record)+
-        dr('Streak',ws.win_streak?'+'+ws.win_streak:ws.loss_streak?'-'+ws.loss_streak:'0')+
-        dr('1st Srv %',pct(ws.first_serve_pct))+dr('Ret Pts Won',pct(ws.return_pts_won))+dr('BP Save',pct(ws.bp_save_pct))+
+      '<div style="grid-column:1/-1"><h4 style="text-align:center;margin-bottom:.6rem;font-size:.7rem;color:var(--t3)">'+esc(wN)+' vs '+esc(lN)+'</h4>'+
+        cmp(ws.elo,'Elo',ls.elo)+
+        cmp(ws.surface_elo,'Surface Elo',ls.surface_elo)+
+        cmp(ws.serve_elo,'Serve',ls.serve_elo)+
+        cmp(ws.return_elo,'Return',ls.return_elo)+
+        cmp(ws.form_last5,'Form (5)',ls.form_last5)+
+        cmp(ws.surface_record,'Surface W/L',ls.surface_record)+
+        cmp(pct(ws.first_serve_pct),'1st Serve %',pct(ls.first_serve_pct))+
+        cmp(pct(ws.return_pts_won),'Return Won',pct(ls.return_pts_won))+
+        cmp(pct(ws.bp_save_pct),'BP Save %',pct(ls.bp_save_pct))+
       '</div>'+
-      '<div class="dc"><h4>'+esc(lN)+'</h4>'+
-        dr('Elo',ls.elo)+dr('Surface',ls.surface_elo)+dr('Serve',ls.serve_elo)+dr('Return',ls.return_elo)+
-        dr('Form (5)',ls.form_last5)+dr('Surface W/L',ls.surface_record)+
-        dr('Streak',ls.win_streak?'+'+ls.win_streak:ls.loss_streak?'-'+ls.loss_streak:'0')+
-        dr('1st Srv %',pct(ls.first_serve_pct))+dr('Ret Pts Won',pct(ls.return_pts_won))+dr('BP Save',pct(ls.bp_save_pct))+
-      '</div>'+
-      (h2h.total?'<div class="h2h-section"><h4>H2H ('+h2h.total+')</h4><div class="h2h-bar"><div class="h2h-fill" style="width:'+(h2h.total?Math.round((fav?h2h.p1_wins:h2h.p2_wins)/h2h.total*100):50)+'%"></div></div>'+
+      (h2h.total?'<div class="h2h-section"><h4>Head to Head ('+h2h.total+')</h4><div class="h2h-bar"><div class="h2h-fill" style="width:'+(h2h.total?Math.round((fav?h2h.p1_wins:h2h.p2_wins)/h2h.total*100):50)+'%"></div></div>'+
         dr(p.player1,h2h.p1_wins+' wins')+dr(p.player2,h2h.p2_wins+' wins')+'</div>':'')+
       (factors.length?'<div class="factors-section"><h4>Key Factors</h4>'+factors.map(f=>'<div class="factor">'+esc(f)+'</div>').join('')+'</div>':'')+
     '</div>'+
@@ -507,6 +515,16 @@ function renderCal(c){
 
 // === HELPERS ===
 function dr(l,v){if(v==null||v===undefined||v==='')return '';return '<div class="dr"><span class="l">'+l+'</span><span class="v">'+v+'</span></div>'}
+function cmp(a,label,b){
+  if(a==null&&b==null) return '';
+  const av=a!=null?String(a):'—';
+  const bv=b!=null?String(b):'—';
+  // Highlight the better value (higher number = better for most stats)
+  let aBetter='',bBetter='';
+  const an=parseFloat(av),bn=parseFloat(bv);
+  if(!isNaN(an)&&!isNaN(bn)){if(an>bn)aBetter=' better';else if(bn>an)bBetter=' better'}
+  return '<div class="cmp"><span class="cv'+aBetter+'">'+av+'</span><span class="cl">'+label+'</span><span class="cv2'+bBetter+'">'+bv+'</span></div>';
+}
 function pct(v){return v!=null&&!isNaN(v)?Math.round(v*100)+'%':null}
 function esc(s){return s?String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
 

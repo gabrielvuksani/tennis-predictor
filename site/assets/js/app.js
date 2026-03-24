@@ -120,26 +120,27 @@ function renderCard(p){
 
   return '<div class="mc'+(isHi?' high':'')+'">'+
     '<div class="mc-top">'+
-      '<div class="mc-winner"><div class="name"><span class="plink" data-name="'+esc(wN)+'">'+esc(wN)+'</span> <span class="arr">&#x276F;</span></div>'+(wR?'<div class="rank">#'+wR+' ATP</div>':'')+'</div>'+
-      '<div class="mc-prob"><div class="big">'+wP+'%</div><div class="bar-w"><div class="bar-f" style="width:'+wP+'%"></div></div><div class="vs">vs '+lP+'%</div></div>'+
-      '<div class="mc-loser"><div class="name"><span class="plink" data-name="'+esc(lN)+'">'+esc(lN)+'</span></div>'+(lR?'<div class="rank">#'+lR+' ATP</div>':'')+'</div>'+
+      '<div class="mc-players">'+
+        '<div class="mc-winner"><div class="name"><span class="plink" data-name="'+esc(wN)+'">'+esc(wN)+'</span> <span class="arr">&#x276F;</span></div>'+(wR?'<div class="rank">#'+wR+' ATP</div>':'')+'</div>'+
+        '<div class="mc-loser"><div class="name"><span class="plink" data-name="'+esc(lN)+'">'+esc(lN)+'</span></div>'+(lR?'<div class="rank">#'+lR+' ATP</div>':'')+'</div>'+
+      '</div>'+
+      '<div class="mc-bar"><div class="mc-bar-w" style="width:'+wP+'%">'+esc(wN)+' '+wP+'%</div><div class="mc-bar-l">'+lP+'% '+esc(lN)+'</div></div>'+
     '</div>'+
     '<div class="mc-tags">'+(s?'<span class="tag t">'+esc(s)+'</span>':'')+cTag+mTag+'</div>'+
-    '<div class="mc-hint">Tap for analysis</div>'+
+    '<div class="mc-hint">Tap for full analysis</div>'+
     '<div class="mc-detail">'+
-      '<div class="dc"><h4>'+esc(wN)+'</h4>'+
-        dr('Elo',ws.elo)+dr('Surface',ws.surface_elo)+dr('Serve',ws.serve_elo)+dr('Return',ws.return_elo)+
-        dr('Form (5)',ws.form_last5)+dr('Surface W/L',ws.surface_record)+
-        dr('Streak',ws.win_streak?'+'+ws.win_streak:ws.loss_streak?'-'+ws.loss_streak:'0')+
-        dr('1st Srv %',pct(ws.first_serve_pct))+dr('Ret Pts Won',pct(ws.return_pts_won))+dr('BP Save',pct(ws.bp_save_pct))+
+      '<div style="grid-column:1/-1"><h4 style="text-align:center;margin-bottom:.6rem;font-size:.7rem;color:var(--t3)">'+esc(wN)+' vs '+esc(lN)+'</h4>'+
+        cmp(ws.elo,'Elo',ls.elo)+
+        cmp(ws.surface_elo,'Surface Elo',ls.surface_elo)+
+        cmp(ws.serve_elo,'Serve',ls.serve_elo)+
+        cmp(ws.return_elo,'Return',ls.return_elo)+
+        cmp(ws.form_last5,'Form (5)',ls.form_last5)+
+        cmp(ws.surface_record,'Surface W/L',ls.surface_record)+
+        cmp(pct(ws.first_serve_pct),'1st Serve %',pct(ls.first_serve_pct))+
+        cmp(pct(ws.return_pts_won),'Return Won',pct(ls.return_pts_won))+
+        cmp(pct(ws.bp_save_pct),'BP Save %',pct(ls.bp_save_pct))+
       '</div>'+
-      '<div class="dc"><h4>'+esc(lN)+'</h4>'+
-        dr('Elo',ls.elo)+dr('Surface',ls.surface_elo)+dr('Serve',ls.serve_elo)+dr('Return',ls.return_elo)+
-        dr('Form (5)',ls.form_last5)+dr('Surface W/L',ls.surface_record)+
-        dr('Streak',ls.win_streak?'+'+ls.win_streak:ls.loss_streak?'-'+ls.loss_streak:'0')+
-        dr('1st Srv %',pct(ls.first_serve_pct))+dr('Ret Pts Won',pct(ls.return_pts_won))+dr('BP Save',pct(ls.bp_save_pct))+
-      '</div>'+
-      (h2h.total?'<div class="h2h-section"><h4>H2H ('+h2h.total+')</h4><div class="h2h-bar"><div class="h2h-fill" style="width:'+(h2h.total?Math.round((fav?h2h.p1_wins:h2h.p2_wins)/h2h.total*100):50)+'%"></div></div>'+
+      (h2h.total?'<div class="h2h-section"><h4>Head to Head ('+h2h.total+')</h4><div class="h2h-bar"><div class="h2h-fill" style="width:'+(h2h.total?Math.round((fav?h2h.p1_wins:h2h.p2_wins)/h2h.total*100):50)+'%"></div></div>'+
         dr(p.player1,h2h.p1_wins+' wins')+dr(p.player2,h2h.p2_wins+' wins')+'</div>':'')+
       (factors.length?'<div class="factors-section"><h4>Key Factors</h4>'+factors.map(f=>'<div class="factor">'+esc(f)+'</div>').join('')+'</div>':'')+
     '</div>'+
@@ -210,6 +211,16 @@ function renderCal(c){
 
 // === HELPERS ===
 function dr(l,v){if(v==null||v===undefined||v==='')return '';return '<div class="dr"><span class="l">'+l+'</span><span class="v">'+v+'</span></div>'}
+function cmp(a,label,b){
+  if(a==null&&b==null) return '';
+  const av=a!=null?String(a):'—';
+  const bv=b!=null?String(b):'—';
+  // Highlight the better value (higher number = better for most stats)
+  let aBetter='',bBetter='';
+  const an=parseFloat(av),bn=parseFloat(bv);
+  if(!isNaN(an)&&!isNaN(bn)){if(an>bn)aBetter=' better';else if(bn>an)bBetter=' better'}
+  return '<div class="cmp"><span class="cv'+aBetter+'">'+av+'</span><span class="cl">'+label+'</span><span class="cv2'+bBetter+'">'+bv+'</span></div>';
+}
 function pct(v){return v!=null&&!isNaN(v)?Math.round(v*100)+'%':null}
 function esc(s){return s?String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
 
