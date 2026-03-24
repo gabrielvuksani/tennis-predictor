@@ -41,10 +41,24 @@ def fetch_upcoming_matches(day_offset: int = 0) -> list[dict]:
         List of match dicts with player names, tournament, surface, etc.
     """
     matches = _fetch_flashscore(day_offset)
-    if not matches:
-        print("Flashscore unavailable, trying Bovada...")
-        matches = _fetch_bovada()
-    return matches
+    if matches:
+        print(f"  Source: Flashscore ({len(matches)} ATP matches)")
+        return matches
+
+    print("  Flashscore unavailable, trying Bovada...")
+    matches = _fetch_bovada()
+    if matches:
+        print(f"  Source: Bovada ({len(matches)} matches)")
+        return matches
+
+    print("  Bovada unavailable, trying Tennis Explorer...")
+    matches = _fetch_tennis_explorer(day_offset)
+    if matches:
+        print(f"  Source: Tennis Explorer ({len(matches)} matches)")
+        return matches
+
+    print("  WARNING: All schedule sources failed!")
+    return []
 
 
 def _fetch_flashscore(day_offset: int = 0) -> list[dict]:
@@ -243,3 +257,65 @@ def _american_to_decimal(american: str) -> float | None:
     except (ValueError, TypeError):
         pass
     return None
+
+
+def _fetch_tennis_explorer(day_offset: int = 0) -> list[dict]:
+    """Third fallback: scrape Tennis Explorer (HTML, no JS needed)."""
+    from datetime import timedelta
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        return []
+
+    target_date = datetime.now(timezone.utc) + timedelta(days=day_offset)
+    url = (
+        f"https://www.tennisexplorer.com/matches/"
+        f"?type=atp-single&year={target_date.year}"
+        f"&month={target_date.month:02d}&day={target_date.day:02d}"
+    )
+
+    try:
+        resp = requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return []
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        matches = []
+
+        # Tennis Explorer uses table rows for matches
+        for row in soup.select("tr.bott"):
+            cells = row.find_all("td")
+            if len(cells) < 5:
+                continue
+
+            # Extract player names from links
+            player_links = row.select("td.t-name a")
+            if len(player_links) < 2:
+                continue
+
+            p1 = player_links[0].get_text(strip=True)
+            p2 = player_links[1].get_text(strip=True)
+
+            if not p1 or not p2:
+                continue
+
+            matches.append({
+                "player1": p1,
+                "player2": p2,
+                "tournament": "",
+                "surface": "Hard",
+                "start_time": target_date.isoformat(),
+                "status": "upcoming",
+                "p1_rank": None,
+                "p2_rank": None,
+                "source": "tennis_explorer",
+            })
+
+        return matches
+    except (requests.RequestException, Exception) as e:
+        print(f"  Tennis Explorer error: {e}")
+        return []

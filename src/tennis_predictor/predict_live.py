@@ -211,17 +211,25 @@ def _find_player_id(name: str, player_lookup: dict) -> str | None:
 
 
 def save_predictions(predictions: list[dict]) -> Path:
-    """Save predictions to site JSON."""
+    """Save predictions to site JSON and daily history (for tracking accuracy)."""
     PREDICTIONS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Save to predictions dir
     output = {
         "generated_at": datetime.now().isoformat(),
         "n_predictions": len(predictions),
         "predictions": predictions,
     }
+
+    # Save latest
     latest_path = PREDICTIONS_DIR / "latest.json"
-    latest_path.write_text(json.dumps(output, indent=2))
+    latest_path.write_text(json.dumps(output, indent=2, default=str))
+
+    # Save daily history (for prediction tracking / feedback loop)
+    history_dir = PREDICTIONS_DIR / "history"
+    history_dir.mkdir(parents=True, exist_ok=True)
+    today = datetime.now().strftime("%Y-%m-%d")
+    history_path = history_dir / f"{today}.json"
+    history_path.write_text(json.dumps(output, indent=2, default=str))
 
     # Update site predictions.json
     site_path = SITE_DIR / "predictions.json"
@@ -234,7 +242,7 @@ def save_predictions(predictions: list[dict]) -> Path:
         SITE_DIR.mkdir(parents=True, exist_ok=True)
         site_path.write_text(json.dumps(output, indent=2, default=str))
 
-    print(f"Saved {len(predictions)} predictions to {site_path}")
+    print(f"Saved {len(predictions)} predictions to {site_path} + history/{today}.json")
     return site_path
 
 
