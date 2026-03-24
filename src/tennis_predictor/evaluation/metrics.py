@@ -339,3 +339,104 @@ def compare_models(evaluations: list[dict]) -> pd.DataFrame:
         rows.append(row)
 
     return pd.DataFrame(rows)
+
+
+def stratified_evaluation(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+    metadata: pd.DataFrame,
+    label: str = "Model",
+) -> dict:
+    """Evaluate model performance stratified by surface, level, round, year.
+
+    Args:
+        y_true: Actual outcomes.
+        y_prob: Predicted probabilities.
+        metadata: DataFrame with tourney_date, surface, tourney_level, round columns.
+    """
+    results = {"label": label, "strata": {}}
+
+    y_true = np.asarray(y_true)
+    y_prob = np.asarray(y_prob)
+
+    # By surface
+    if "surface" in metadata.columns:
+        for surface in ["Hard", "Clay", "Grass"]:
+            mask = metadata["surface"].values == surface
+            if mask.sum() > 50:
+                results["strata"][f"surface_{surface}"] = {
+                    "n": int(mask.sum()),
+                    "accuracy": accuracy(y_true[mask], y_prob[mask]),
+                    "brier": brier_score(y_true[mask], y_prob[mask]),
+                }
+
+    # By tournament level
+    if "tourney_level" in metadata.columns:
+        for level, name in [("G", "Grand Slam"), ("M", "Masters"), ("A", "ATP 500/250")]:
+            mask = metadata["tourney_level"].values == level
+            if mask.sum() > 50:
+                results["strata"][f"level_{name}"] = {
+                    "n": int(mask.sum()),
+                    "accuracy": accuracy(y_true[mask], y_prob[mask]),
+                    "brier": brier_score(y_true[mask], y_prob[mask]),
+                }
+
+    # By year
+    if "tourney_date" in metadata.columns:
+        dates = pd.to_datetime(metadata["tourney_date"])
+        for year in sorted(dates.dt.year.dropna().unique()):
+            mask = dates.dt.year.values == year
+            if mask.sum() > 50:
+                results["strata"][f"year_{int(year)}"] = {
+                    "n": int(mask.sum()),
+                    "accuracy": accuracy(y_true[mask], y_prob[mask]),
+                    "brier": brier_score(y_true[mask], y_prob[mask]),
+                }
+
+    # By round (early vs late)
+    if "round" in metadata.columns:
+        early = metadata["round"].isin(["R128", "R64", "R32"]).values
+        late = metadata["round"].isin(["QF", "SF", "F"]).values
+        if early.sum() > 50:
+            results["strata"]["round_early"] = {
+                "n": int(early.sum()),
+                "accuracy": accuracy(y_true[early], y_prob[early]),
+                "brier": brier_score(y_true[early], y_prob[early]),
+            }
+        if late.sum() > 50:
+            results["strata"]["round_late"] = {
+                "n": int(late.sum()),
+                "accuracy": accuracy(y_true[late], y_prob[late]),
+                "brier": brier_score(y_true[late], y_prob[late]),
+            }
+
+    # By confidence bucket (how good is the model when it's confident?)
+    confident = y_prob >= 0.7
+    uncertain = (y_prob >= 0.4) & (y_prob <= 0.6)
+    if confident.sum() > 50:
+        results["strata"]["conf_high"] = {
+            "n": int(confident.sum()),
+            "accuracy": accuracy(y_true[confident], y_prob[confident]),
+            "brier": brier_score(y_true[confident], y_prob[confident]),
+        }
+    if uncertain.sum() > 50:
+        results["strata"]["conf_uncertain"] = {
+            "n": int(uncertain.sum()),
+            "accuracy": accuracy(y_true[uncertain], y_prob[uncertain]),
+            "brier": brier_score(y_true[uncertain], y_prob[uncertain]),
+        }
+
+    return results
+
+
+def print_stratified_evaluation(strat_results: dict) -> None:
+    """Pretty-print stratified evaluation results."""
+    print(f"\n{'='*55}")
+    print(f"Stratified Evaluation: {strat_results['label']}")
+    print(f"{'='*55}")
+    print(f"{'Stratum':<25} {'N':>7} {'Accuracy':>10} {'Brier':>10}")
+    print(f"{'-'*55}")
+    for stratum, metrics in strat_results["strata"].items():
+        print(f"{stratum:<25} {metrics['n']:>7} "
+              f"{metrics['accuracy']:>10.4f} {metrics['brier']:>10.4f}")
+    print(f"{'='*55}")
