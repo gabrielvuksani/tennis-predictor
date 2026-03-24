@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-23T23:42:01.482135",
+  "generated_at": "2026-03-23T23:46:24.197336",
   "model_version": "0.1.0",
   "predictions": [
     {
@@ -15,7 +15,8 @@
       "p2_rank": 98,
       "confidence": 0.879,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:42:01.478264"
+      "generated_at": "2026-03-23T23:46:24.193781",
+      "edge_signal": "high_confidence"
     },
     {
       "player1": "Halys Q.",
@@ -30,7 +31,8 @@
       "p2_rank": 81,
       "confidence": 0.768,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:42:01.481185"
+      "generated_at": "2026-03-23T23:46:24.196552",
+      "edge_signal": "high_confidence"
     },
     {
       "player1": "Atmane T.",
@@ -45,7 +47,8 @@
       "p2_rank": 200,
       "confidence": 0.652,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:42:01.477284"
+      "generated_at": "2026-03-23T23:46:24.192835",
+      "edge_signal": "high_confidence"
     },
     {
       "player1": "Korda S.",
@@ -60,7 +63,8 @@
       "p2_rank": 176,
       "confidence": 0.624,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:42:01.472879"
+      "generated_at": "2026-03-23T23:46:24.188494",
+      "edge_signal": "high_confidence"
     },
     {
       "player1": "Vacherot V.",
@@ -75,7 +79,8 @@
       "p2_rank": 77,
       "confidence": 0.542,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:42:01.474856"
+      "generated_at": "2026-03-23T23:46:24.190436",
+      "edge_signal": "none"
     },
     {
       "player1": "Lehecka J.",
@@ -90,7 +95,8 @@
       "p2_rank": 200,
       "confidence": 0.515,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:42:01.473876"
+      "generated_at": "2026-03-23T23:46:24.189463",
+      "edge_signal": "none"
     },
     {
       "player1": "Etcheverry T. M.",
@@ -105,7 +111,8 @@
       "p2_rank": 200,
       "confidence": 0.493,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:42:01.476297"
+      "generated_at": "2026-03-23T23:46:24.191869",
+      "edge_signal": "none"
     },
     {
       "player1": "Humbert U.",
@@ -120,7 +127,8 @@
       "p2_rank": 22,
       "confidence": 0.424,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:42:01.479712"
+      "generated_at": "2026-03-23T23:46:24.195152",
+      "edge_signal": "none"
     }
   ],
   "model_stats": {},
