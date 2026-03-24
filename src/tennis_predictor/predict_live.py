@@ -85,18 +85,9 @@ def run_live_predictions() -> list[dict]:
     # Sort by confidence (most confident first)
     predictions.sort(key=lambda p: p["confidence"], reverse=True)
 
-    # Tag high-confidence predictions (research: profit comes from knowing when you have an edge)
-    for p in predictions:
-        p["edge_signal"] = "none"
-        if p["confidence"] >= 0.6:
-            p["edge_signal"] = "high_confidence"
-        # Flag intransitive matchups (bookmakers weakest here)
-        intrans = p.get("intransitivity_score", 0) or 0
-        if intrans >= 0.3:
-            p["edge_signal"] = "intransitive"
-        # Flag sharp money divergence
-        if abs(p.get("sharp_signal", 0) or 0) > 0.03:
-            p["edge_signal"] = "sharp_money"
+    # Apply selective prediction analysis
+    from tennis_predictor.models.selective import compute_edge_signals
+    predictions = compute_edge_signals(predictions)
 
     high_conf = sum(1 for p in predictions if p["edge_signal"] != "none")
     print(f"\nGenerated {len(predictions)} predictions ({high_conf} high-edge)")

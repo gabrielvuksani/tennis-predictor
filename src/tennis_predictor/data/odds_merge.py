@@ -66,22 +66,38 @@ def _prepare_odds(odds_df: pd.DataFrame) -> pd.DataFrame:
     else:
         odds_df["_date"] = pd.NaT
 
-    # Compute implied probabilities
+    # Use implied probabilities — may already be computed by download_tennis_data_odds
     odds_df["_ip_w"] = np.nan
     odds_df["_ip_l"] = np.nan
     odds_df["_ow"] = np.nan
     odds_df["_ol"] = np.nan
 
-    for wc, lc in [("PSW", "PSL"), ("B365W", "B365L"), ("AvgW", "AvgL")]:
-        if wc in odds_df.columns:
-            ow = pd.to_numeric(odds_df[wc], errors="coerce")
-            ol = pd.to_numeric(odds_df[lc], errors="coerce")
-            total = 1.0 / ow + 1.0 / ol
-            mask = odds_df["_ip_w"].isna() & ow.notna()
-            odds_df.loc[mask, "_ip_w"] = (1.0 / ow / total)[mask]
-            odds_df.loc[mask, "_ip_l"] = (1.0 / ol / total)[mask]
-            odds_df.loc[mask, "_ow"] = ow[mask]
-            odds_df.loc[mask, "_ol"] = ol[mask]
+    # Try pre-computed columns first (from _clean_odds in odds.py)
+    if "implied_prob_w" in odds_df.columns:
+        odds_df["_ip_w"] = pd.to_numeric(odds_df["implied_prob_w"], errors="coerce")
+        odds_df["_ip_l"] = pd.to_numeric(odds_df["implied_prob_l"], errors="coerce")
+    if "odds_pinnacle_w" in odds_df.columns:
+        odds_df["_ow"] = pd.to_numeric(odds_df["odds_pinnacle_w"], errors="coerce")
+        odds_df["_ol"] = pd.to_numeric(odds_df["odds_pinnacle_l"], errors="coerce")
+    elif "odds_b365_w" in odds_df.columns:
+        odds_df["_ow"] = pd.to_numeric(odds_df["odds_b365_w"], errors="coerce")
+        odds_df["_ol"] = pd.to_numeric(odds_df["odds_b365_l"], errors="coerce")
+    elif "odds_avg_w" in odds_df.columns:
+        odds_df["_ow"] = pd.to_numeric(odds_df["odds_avg_w"], errors="coerce")
+        odds_df["_ol"] = pd.to_numeric(odds_df["odds_avg_l"], errors="coerce")
+
+    # Fallback: compute from raw columns if not pre-computed
+    if odds_df["_ip_w"].isna().all():
+        for wc, lc in [("PSW", "PSL"), ("B365W", "B365L"), ("AvgW", "AvgL")]:
+            if wc in odds_df.columns:
+                ow = pd.to_numeric(odds_df[wc], errors="coerce")
+                ol = pd.to_numeric(odds_df[lc], errors="coerce")
+                total = 1.0 / ow + 1.0 / ol
+                mask = odds_df["_ip_w"].isna() & ow.notna()
+                odds_df.loc[mask, "_ip_w"] = (1.0 / ow / total)[mask]
+                odds_df.loc[mask, "_ip_l"] = (1.0 / ol / total)[mask]
+                odds_df.loc[mask, "_ow"] = ow[mask]
+                odds_df.loc[mask, "_ol"] = ol[mask]
 
     # Parse names and ranks
     if "Winner" in odds_df.columns:
@@ -206,7 +222,7 @@ def _match_by_lastname(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
     return matched
 
 
-def _match_by_rank(matches: pd.DataFrame, odds_df: pd.DataFrame, tolerance: int = 3) -> int:
+def _match_by_rank(matches: pd.DataFrame, odds_df: pd.DataFrame, tolerance: int = 5) -> int:
     """Strategy 3: Rank proximity + surface + date window."""
     if "_wr" not in odds_df.columns:
         return 0
