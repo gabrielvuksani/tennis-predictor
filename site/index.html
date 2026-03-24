@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,47 +10,63 @@
 </head>
 <body>
 <div class="app">
-  <nav class="topbar"><div class="topbar-in">
+  <nav class="topbar"><div class="tb-in">
     <div class="brand"><span class="dot"></span> Tennis Predictor</div>
-    <div class="status" id="status"></div>
+    <div class="tb-right">
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-v="predictions">Predictions</button>
+        <button class="tab" data-v="results">Results</button>
+        <button class="tab" data-v="analytics">Analytics</button>
+      </div>
+      <button class="theme-btn" id="theme-toggle" title="Toggle theme">&#9790;</button>
+    </div>
   </div></nav>
 
   <main class="wrap">
-    <header class="hero">
-      <h1>Match <span class="hl">Predictions</span></h1>
-      <p>AI model &middot; 320K matches &middot; 244 features &middot; Updated 2x daily</p>
-    </header>
-
-    <section class="sec">
-      <div class="sec-top"><h2>Upcoming</h2><span class="pill" id="cnt">0</span></div>
+    <div id="view-predictions" class="view active">
+      <header class="hero"><h1>Match <span class="hl">Predictions</span></h1>
+      <p class="sub" id="status-line">Loading...</p></header>
       <div id="cards"></div>
-    </section>
+    </div>
 
-    <section class="sec">
-      <h2>Performance</h2>
+    <div id="view-results" class="view">
+      <header class="hero"><h1>Prediction <span class="hl">Results</span></h1>
+      <p class="sub">Track record of recent predictions</p></header>
+      <div id="results-content"></div>
+    </div>
+
+    <div id="view-analytics" class="view">
+      <header class="hero"><h1><span class="hl">Analytics</span></h1>
+      <p class="sub">Model performance and calibration</p></header>
       <div class="grid4" id="perf"></div>
-    </section>
-
-    <section class="sec">
-      <h2>Calibration</h2>
-      <p class="sub">Predicted probability vs actual outcome. Diagonal = perfect.</p>
-      <div class="chart-box"><canvas id="cal"></canvas></div>
-    </section>
-
-    <section class="sec">
-      <h2>System</h2>
-      <div class="grid4">
-        <div class="info-card"><strong>244</strong><span>Features</span><p>Elo, Glicko-2, serve/return, fatigue, weather, court speed, sentiment</p></div>
-        <div class="info-card"><strong>320K</strong><span>Matches</span><p>1991-2026. JeffSackmann + TennisMyLife databases</p></div>
-        <div class="info-card"><strong>Zero</strong><span>Leakage</span><p>TemporalGuard ensures no future data leaks into predictions</p></div>
-        <div class="info-card"><strong>24/7</strong><span>Autonomous</span><p>Self-learning. Retrains daily. Drift detection triggers emergency retrains</p></div>
+      <div style="margin-top:1.5rem">
+        <h3 style="font-size:.95rem;margin-bottom:.8rem">Calibration</h3>
+        <p class="sub">Predicted probability vs actual win rate. Diagonal = perfect.</p>
+        <div class="chart-box"><canvas id="cal"></canvas></div>
       </div>
-    </section>
+      <div style="margin-top:1.5rem" id="system-info">
+        <h3 style="font-size:.95rem;margin-bottom:.8rem">System</h3>
+        <div class="grid4">
+          <div class="info-card"><strong>244</strong><span>Features</span><p>Elo, Glicko-2, serve/return, fatigue, weather, court speed, sentiment</p></div>
+          <div class="info-card"><strong>320K</strong><span>Matches</span><p>1991-2026. JeffSackmann + TennisMyLife databases</p></div>
+          <div class="info-card"><strong>Zero</strong><span>Leakage</span><p>TemporalGuard ensures no future data leaks into predictions</p></div>
+          <div class="info-card"><strong>24/7</strong><span>Autonomous</span><p>Self-learning. Retrains daily. Drift detection triggers emergency retrains</p></div>
+        </div>
+      </div>
+    </div>
   </main>
 
+  <!-- Player Modal -->
+  <div class="modal-overlay" id="player-modal">
+    <div class="modal">
+      <button class="modal-close" id="modal-close">&times;</button>
+      <div id="player-content"></div>
+    </div>
+  </div>
+
   <footer class="foot">
-    <p>10,361 players tracked &middot; 12 data sources &middot; All free, zero API keys</p>
-    <p><a href="https://github.com/gabrielvuksani/tennis-predictor">Source</a></p>
+    <p>10,361 players &middot; 12 data sources &middot; All free</p>
+    <p><a href="https://github.com/gabrielvuksani/tennis-predictor">GitHub</a></p>
   </footer>
 </div>
 <script src="assets/js/app.js"></script>
