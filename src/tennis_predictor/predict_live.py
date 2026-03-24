@@ -48,7 +48,11 @@ def run_live_predictions() -> list[dict]:
         print("No upcoming matches found.")
         return []
 
-    # 2. Load model and state
+    # 2. Enrich with sentiment and line movements
+    print("Enriching with sentiment and line data...")
+    upcoming = _enrich_matches(upcoming)
+
+    # 3. Load model and state
     guard_state, player_lookup = _load_state()
 
     # 3. Generate predictions
@@ -163,6 +167,37 @@ def _predict_match(
         "model": "elo_surface_blend",
         "generated_at": datetime.now().isoformat(),
     }
+
+
+def _enrich_matches(matches: list[dict]) -> list[dict]:
+    """Add sentiment and line movement data to matches."""
+    # Sentiment (Reddit)
+    try:
+        from tennis_predictor.data.sentiment import get_player_sentiment
+        for match in matches:
+            p1_sent = get_player_sentiment(match["player1"])
+            p2_sent = get_player_sentiment(match["player2"])
+            match["p1_sentiment"] = p1_sent.get("sentiment_score", 0)
+            match["p2_sentiment"] = p2_sent.get("sentiment_score", 0)
+            match["p1_injury_signal"] = p1_sent.get("injury_signal", 0)
+            match["p2_injury_signal"] = p2_sent.get("injury_signal", 0)
+            match["p1_momentum_signal"] = p1_sent.get("momentum_signal", 0)
+            match["p2_momentum_signal"] = p2_sent.get("momentum_signal", 0)
+            match["sentiment_diff"] = match["p1_sentiment"] - match["p2_sentiment"]
+    except Exception as e:
+        print(f"  Sentiment enrichment skipped: {e}")
+
+    # Line movements (Bovada odds snapshots)
+    try:
+        from tennis_predictor.data.line_movements import track_line_movements, get_line_features
+        movements = track_line_movements(matches)
+        for match in matches:
+            lf = get_line_features(match["player1"], match["player2"])
+            match.update(lf)
+    except Exception as e:
+        print(f"  Line movement enrichment skipped: {e}")
+
+    return matches
 
 
 def _find_player_id(name: str, player_lookup: dict) -> str | None:
