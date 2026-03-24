@@ -153,62 +153,30 @@ def _predict_match(
         p1_rank = match.get("p1_rank")
         p2_rank = match.get("p2_rank")
         if p1_rank and p2_rank:
-            # Simple logistic model from rank difference
-            rank_diff = p2_rank - p1_rank  # Positive = p1 is better
+            rank_diff = p2_rank - p1_rank
             prob_p1 = 1.0 / (1.0 + 10 ** (-rank_diff / 250))
         else:
             return None
+        model_used = "rank_fallback"
     else:
-        init = HP.elo.initial_rating
+        # Try to use the TRAINED ENSEMBLE MODEL (highest accuracy)
+        prob_p1, model_used = _predict_with_ensemble(match, guard_state, p1_id, p2_id, surface)
 
-        # Get Elo ratings
-        elo1 = guard_state.elo.get(p1_id, init) if p1_id else init
-        elo2 = guard_state.elo.get(p2_id, init) if p2_id else init
-
-        # Surface Elo
-        surf_elo1 = guard_state.elo_surface.get((p1_id, surface), init) if p1_id else init
-        surf_elo2 = guard_state.elo_surface.get((p2_id, surface), init) if p2_id else init
-
-        # Blended probability (60% surface Elo, 40% overall Elo)
-        elo_prob = 1.0 / (1.0 + 10 ** ((elo2 - elo1) / 400))
-        surf_prob = 1.0 / (1.0 + 10 ** ((surf_elo2 - surf_elo1) / 400))
-        prob_p1 = 0.4 * elo_prob + 0.6 * surf_prob
-
-        # Adjust toward 50% if we have no data on a player (uncertainty)
-        if p1_id is None or elo1 == init:
-            prob_p1 = 0.4 * prob_p1 + 0.6 * 0.5
-        if p2_id is None or elo2 == init:
-            prob_p1 = 0.4 * prob_p1 + 0.6 * 0.5
-
-        # Blend with point-level simulation ONLY if we have real player data
-        try:
-            from tennis_predictor.models.point_sim import get_point_sim_prediction
-            p1_hist = guard_state.match_history.get(p1_id, []) if p1_id else []
-            p2_hist = guard_state.match_history.get(p2_id, []) if p2_id else []
-
-            # Only compute if BOTH players have serve/return stats
-            if len(p1_hist) >= 5 and len(p2_hist) >= 5:
-                p1_spw_vals = [m.get("serve_pts_won_pct") for m in p1_hist[-20:] if m.get("serve_pts_won_pct") is not None and not np.isnan(m.get("serve_pts_won_pct", np.nan))]
-                p1_rpw_vals = [m.get("return_pts_won_pct") for m in p1_hist[-20:] if m.get("return_pts_won_pct") is not None and not np.isnan(m.get("return_pts_won_pct", np.nan))]
-                p2_spw_vals = [m.get("serve_pts_won_pct") for m in p2_hist[-20:] if m.get("serve_pts_won_pct") is not None and not np.isnan(m.get("serve_pts_won_pct", np.nan))]
-                p2_rpw_vals = [m.get("return_pts_won_pct") for m in p2_hist[-20:] if m.get("return_pts_won_pct") is not None and not np.isnan(m.get("return_pts_won_pct", np.nan))]
-
-                # Only blend if we have REAL stats for all four values
-                if len(p1_spw_vals) >= 3 and len(p1_rpw_vals) >= 3 and len(p2_spw_vals) >= 3 and len(p2_rpw_vals) >= 3:
-                    best_of = 5 if match.get("tournament", "").lower() in [
-                        "australian open", "roland garros", "wimbledon", "us open"
-                    ] else 3
-
-                    sim_prob = get_point_sim_prediction(
-                        np.mean(p1_spw_vals), np.mean(p1_rpw_vals),
-                        np.mean(p2_spw_vals), np.mean(p2_rpw_vals),
-                        best_of,
-                    )
-                    if sim_prob is not None and not np.isnan(sim_prob):
-                        # Blend: 85% Elo + 15% point sim (Elo is primary, sim is supplementary)
-                        prob_p1 = 0.85 * prob_p1 + 0.15 * sim_prob
-        except Exception:
-            pass
+        if prob_p1 is None:
+            # Fallback: Elo blend
+            init = HP.elo.initial_rating
+            elo1 = guard_state.elo.get(p1_id, init) if p1_id else init
+            elo2 = guard_state.elo.get(p2_id, init) if p2_id else init
+            surf_elo1 = guard_state.elo_surface.get((p1_id, surface), init) if p1_id else init
+            surf_elo2 = guard_state.elo_surface.get((p2_id, surface), init) if p2_id else init
+            elo_prob = 1.0 / (1.0 + 10 ** ((elo2 - elo1) / 400))
+            surf_prob = 1.0 / (1.0 + 10 ** ((surf_elo2 - surf_elo1) / 400))
+            prob_p1 = 0.4 * elo_prob + 0.6 * surf_prob
+            if p1_id is None or elo1 == init:
+                prob_p1 = 0.4 * prob_p1 + 0.6 * 0.5
+            if p2_id is None or elo2 == init:
+                prob_p1 = 0.4 * prob_p1 + 0.6 * 0.5
+            model_used = "elo_blend"
 
     prob_p1 = max(0.05, min(0.95, prob_p1))
 
@@ -229,9 +197,151 @@ def _predict_match(
         "confidence": round(confidence, 3),
         "intransitivity_score": match.get("intransitivity_score", 0),
         "sharp_signal": match.get("sharp_signal", 0),
-        "model": "elo_surface_blend",
+        "model": model_used,
         "generated_at": datetime.now().isoformat(),
     }
+
+
+def _predict_with_ensemble(
+    match: dict, guard_state, p1_id: str | None, p2_id: str | None, surface: str,
+) -> tuple[float | None, str]:
+    """Try to predict using the trained ensemble/CatBoost model.
+
+    Builds a feature vector from the guard state and runs it through
+    the trained model. Returns (probability, model_name) or (None, "") if fails.
+    """
+    try:
+        # Load model (cached after first call)
+        model = _get_cached_model()
+        if model is None:
+            return None, ""
+
+        # Build a mock match Series that the TemporalGuard can extract features from
+        from tennis_predictor.temporal.guard import TemporalGuard
+        mock_guard = TemporalGuard(state=guard_state)
+
+        match_series = pd.Series({
+            "match_id": f"live_{match.get('player1', '')}_{match.get('player2', '')}",
+            "p1_id": p1_id or "",
+            "p2_id": p2_id or "",
+            "tourney_date": pd.Timestamp.now(),
+            "tourney_name": match.get("tournament", ""),
+            "tourney_level": "A",
+            "surface": surface,
+            "round": "R32",
+            "best_of": 3,
+            "draw_size": 32,
+            "p1_rank": match.get("p1_rank", np.nan),
+            "p2_rank": match.get("p2_rank", np.nan),
+            "p1_rank_points": np.nan,
+            "p2_rank_points": np.nan,
+            "p1_age": np.nan,
+            "p2_age": np.nan,
+            "p1_ht": np.nan,
+            "p2_ht": np.nan,
+            "p1_entry": "",
+            "p2_entry": "",
+            "p1_seed": "",
+            "p2_seed": "",
+            "p1_hand": "R",
+            "p2_hand": "R",
+            "p1_ioc": "",
+            "p2_ioc": "",
+            "minutes": np.nan,
+            "retirement": False,
+            "n_sets": np.nan,
+            "y": 0,
+            # Stats (not available for upcoming matches)
+            "w_ace": np.nan, "w_df": np.nan, "w_svpt": np.nan,
+            "w_1stIn": np.nan, "w_1stWon": np.nan, "w_2ndWon": np.nan,
+            "w_SvGms": np.nan, "w_bpSaved": np.nan, "w_bpFaced": np.nan,
+            "l_ace": np.nan, "l_df": np.nan, "l_svpt": np.nan,
+            "l_1stIn": np.nan, "l_1stWon": np.nan, "l_2ndWon": np.nan,
+            "l_SvGms": np.nan, "l_bpSaved": np.nan, "l_bpFaced": np.nan,
+            # Supplementary
+            "court_speed": np.nan,
+            "weather_temp_max": np.nan, "weather_temp_min": np.nan,
+            "weather_precipitation": np.nan, "weather_wind_max": np.nan,
+            "weather_wind_gust_max": np.nan, "weather_altitude": np.nan,
+            "weather_is_indoor": np.nan,
+            "odds_implied_p1": np.nan, "odds_implied_p2": np.nan,
+            "odds_diff": np.nan, "elo_vs_odds_diff": np.nan,
+            "intransitivity_score": np.nan,
+            "p1_sentiment": np.nan, "p2_sentiment": np.nan,
+            "p1_injury_signal": np.nan, "p2_injury_signal": np.nan,
+            "p1_momentum_signal": np.nan, "p2_momentum_signal": np.nan,
+            "sentiment_diff": np.nan,
+            "line_direction": np.nan, "line_magnitude": np.nan,
+            "sharp_signal": np.nan, "opening_implied_p1": np.nan,
+            "current_implied_p1": np.nan,
+        })
+
+        # Extract features using the guard (reads from Elo/Glicko/history state)
+        # We need to bypass the duplicate check since this is a live prediction
+        mock_guard._processed_match_ids = set()  # Allow processing
+        mock_guard._last_extracted_match = None
+        features = mock_guard.extract_pre_match_state(match_series)
+
+        # Build DataFrame and align columns to model's expected order
+        feature_df = pd.DataFrame([features])
+
+        # Get expected feature names from the first base model
+        expected_cols = None
+        if hasattr(model, "final_base_models_") and model.final_base_models_:
+            base_model = model.final_base_models_[0][1]
+            if hasattr(base_model, "feature_names_"):
+                expected_cols = base_model.feature_names_
+
+        if expected_cols is not None:
+            for col in expected_cols:
+                if col not in feature_df.columns:
+                    feature_df[col] = np.nan
+            feature_df = feature_df[expected_cols]
+
+        # Run through model
+        proba = model.predict_proba(feature_df)
+        prob_p1 = float(proba[0, 1])
+
+        model_name = type(model).__name__.lower()
+        if "stacking" in model_name or "ensemble" in model_name:
+            model_name = "stacking_ensemble"
+        elif "catboost" in model_name:
+            model_name = "catboost"
+        elif "xgboost" in model_name or "xgb" in model_name:
+            model_name = "xgboost"
+        else:
+            model_name = "trained_model"
+
+        return prob_p1, model_name
+
+    except Exception as e:
+        # Silently fall back to Elo blend
+        return None, ""
+
+
+_MODEL_CACHE = {"model": None, "loaded": False}
+
+
+def _get_cached_model():
+    """Load and cache the trained model."""
+    if _MODEL_CACHE["loaded"]:
+        return _MODEL_CACHE["model"]
+
+    _MODEL_CACHE["loaded"] = True
+
+    for name in ["model_ensemble.pkl", "model_catboost.pkl", "model_xgboost.pkl"]:
+        path = PROCESSED_DIR / name
+        if path.exists():
+            try:
+                with open(path, "rb") as f:
+                    model = pickle.load(f)
+                _MODEL_CACHE["model"] = model
+                print(f"  Loaded trained model: {name}")
+                return model
+            except Exception:
+                continue
+
+    return None
 
 
 def _build_ranking_lookup() -> dict[str, int]:
