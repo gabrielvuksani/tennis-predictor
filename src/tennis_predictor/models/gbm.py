@@ -22,7 +22,7 @@ class XGBoostPredictor(BaseEstimator, ClassifierMixin):
         self.params = {**MODEL_CONFIG["xgboost"], **kwargs}
         self.model = None
 
-    def fit(self, X, y, eval_set=None, **kwargs):
+    def fit(self, X, y, eval_set=None, sample_weight=None, **kwargs):
         import xgboost as xgb
 
         self.classes_ = np.array([0, 1])
@@ -43,6 +43,8 @@ class XGBoostPredictor(BaseEstimator, ClassifierMixin):
             fit_params["eval_set"] = [(X_eval, y_eval)]
             if early_stopping:
                 self.model.set_params(early_stopping_rounds=early_stopping)
+        if sample_weight is not None:
+            fit_params["sample_weight"] = sample_weight
 
         self.model.fit(X_clean, y, **fit_params)
         return self
@@ -73,7 +75,7 @@ class LightGBMPredictor(BaseEstimator, ClassifierMixin):
         self.params = {**MODEL_CONFIG["lightgbm"], **kwargs}
         self.model = None
 
-    def fit(self, X, y, eval_set=None, **kwargs):
+    def fit(self, X, y, eval_set=None, sample_weight=None, **kwargs):
         import lightgbm as lgb
 
         self.classes_ = np.array([0, 1])
@@ -90,6 +92,8 @@ class LightGBMPredictor(BaseEstimator, ClassifierMixin):
             X_eval, y_eval = eval_set
             X_eval = _prepare_features(X_eval)
             fit_params["eval_set"] = [(X_eval, y_eval)]
+        if sample_weight is not None:
+            fit_params["sample_weight"] = sample_weight
 
         self.model.fit(X_clean, y, **fit_params)
         return self
@@ -120,7 +124,7 @@ class CatBoostPredictor(BaseEstimator, ClassifierMixin):
         self.params = {**MODEL_CONFIG["catboost"], **kwargs}
         self.model = None
 
-    def fit(self, X, y, eval_set=None, **kwargs):
+    def fit(self, X, y, eval_set=None, sample_weight=None, **kwargs):
         from catboost import CatBoostClassifier
 
         self.classes_ = np.array([0, 1])
@@ -141,6 +145,8 @@ class CatBoostPredictor(BaseEstimator, ClassifierMixin):
             fit_params["eval_set"] = (X_eval, y_eval)
             if early_stopping:
                 self.model.set_params(od_wait=early_stopping)
+        if sample_weight is not None:
+            fit_params["sample_weight"] = sample_weight
 
         self.model.fit(X_clean, y, **fit_params)
         return self
