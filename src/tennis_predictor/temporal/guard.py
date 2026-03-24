@@ -225,7 +225,18 @@ class TemporalGuard:
         # Intransitivity score (from GNN if available, else NaN)
         features["intransitivity_score"] = match.get("intransitivity_score", np.nan)
 
-        # === ADVANCED FEATURES (40+ new) ===
+        # === SENTIMENT FEATURES (from Reddit, pre-cached) ===
+        for sf in ["p1_sentiment", "p2_sentiment", "p1_injury_signal",
+                    "p2_injury_signal", "p1_momentum_signal", "p2_momentum_signal",
+                    "sentiment_diff"]:
+            features[sf] = match.get(sf, np.nan)
+
+        # === LINE MOVEMENT FEATURES (from Bovada snapshots) ===
+        for lf in ["line_direction", "line_magnitude", "sharp_signal",
+                    "opening_implied_p1", "current_implied_p1"]:
+            features[lf] = match.get(lf, np.nan)
+
+        # === ADVANCED FEATURES (80+ derived) ===
         from tennis_predictor.features.advanced import extract_advanced_features
         features.update(extract_advanced_features(match, self.state, features))
 

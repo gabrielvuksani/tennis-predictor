@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-23T23:30:16.751280",
+  "generated_at": "2026-03-23T23:42:01.482135",
   "model_version": "0.1.0",
   "predictions": [
     {
@@ -15,7 +15,7 @@
       "p2_rank": 98,
       "confidence": 0.879,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:30:16.747250"
+      "generated_at": "2026-03-23T23:42:01.478264"
     },
     {
       "player1": "Halys Q.",
@@ -30,7 +30,7 @@
       "p2_rank": 81,
       "confidence": 0.768,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:30:16.750219"
+      "generated_at": "2026-03-23T23:42:01.481185"
     },
     {
       "player1": "Atmane T.",
@@ -45,7 +45,7 @@
       "p2_rank": 200,
       "confidence": 0.652,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:30:16.746251"
+      "generated_at": "2026-03-23T23:42:01.477284"
     },
     {
       "player1": "Korda S.",
@@ -60,7 +60,7 @@
       "p2_rank": 176,
       "confidence": 0.624,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:30:16.741798"
+      "generated_at": "2026-03-23T23:42:01.472879"
     },
     {
       "player1": "Vacherot V.",
@@ -75,7 +75,7 @@
       "p2_rank": 77,
       "confidence": 0.542,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:30:16.743874"
+      "generated_at": "2026-03-23T23:42:01.474856"
     },
     {
       "player1": "Lehecka J.",
@@ -90,7 +90,7 @@
       "p2_rank": 200,
       "confidence": 0.515,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:30:16.742835"
+      "generated_at": "2026-03-23T23:42:01.473876"
     },
     {
       "player1": "Etcheverry T. M.",
@@ -105,7 +105,7 @@
       "p2_rank": 200,
       "confidence": 0.493,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:30:16.745298"
+      "generated_at": "2026-03-23T23:42:01.476297"
     },
     {
       "player1": "Humbert U.",
@@ -120,7 +120,7 @@
       "p2_rank": 22,
       "confidence": 0.424,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:30:16.748751"
+      "generated_at": "2026-03-23T23:42:01.479712"
     }
   ],
   "model_stats": {},
