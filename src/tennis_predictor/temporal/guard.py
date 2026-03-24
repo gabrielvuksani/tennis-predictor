@@ -271,8 +271,8 @@ class TemporalGuard:
         winner_id = p1_id if result == 1 else p2_id
         loser_id = p2_id if result == 1 else p1_id
 
-        # Update Elo
-        self._update_elo(winner_id, loser_id, surface, tourney_level, best_of)
+        # Update Elo (margin-weighted via set count)
+        self._update_elo(winner_id, loser_id, surface, tourney_level, best_of, match)
 
         # Update Glicko-2
         self._update_glicko2(winner_id, loser_id, match_date)
@@ -512,19 +512,21 @@ class TemporalGuard:
     def _update_elo(
         self, winner_id: str, loser_id: str,
         surface: str, tourney_level: str, best_of: int,
+        match: pd.Series | None = None,
     ) -> None:
-        from tennis_predictor.config import ELO_CONFIG
-        init = ELO_CONFIG["initial_rating"]
-        base_k = ELO_CONFIG["k_factor_base"]
-        exp = ELO_CONFIG["k_factor_exponent"]
-        offset = ELO_CONFIG["k_factor_offset"]
-        level_mult = ELO_CONFIG["level_multipliers"].get(tourney_level, 1.0)
-        bo5_mult = ELO_CONFIG["bo5_multiplier"] if best_of == 5 else 1.0
+        from tennis_predictor.hyperparams import HP
+        init = HP.elo.initial_rating
+        base_k = HP.elo.k_factor_base
+        exp = HP.elo.k_factor_exponent
+        offset = HP.elo.k_factor_offset
+        level_mult = HP.elo.level_multipliers.get(tourney_level, 1.0)
+        bo5_mult = HP.elo.bo5_multiplier if best_of == 5 else 1.0
+        scale = HP.elo.logistic_scale
 
         # Overall Elo update
         elo_w = self.state.elo.get(winner_id, init)
         elo_l = self.state.elo.get(loser_id, init)
-        expected_w = 1.0 / (1.0 + 10 ** ((elo_l - elo_w) / 400))
+        expected_w = 1.0 / (1.0 + 10 ** ((elo_l - elo_w) / scale))
 
         # K-factor: decreases with experience (FiveThirtyEight formula)
         k_w = base_k / (self.state.match_counts.get(winner_id, 0) + offset) ** exp
@@ -532,8 +534,23 @@ class TemporalGuard:
         k_w *= level_mult * bo5_mult
         k_l *= level_mult * bo5_mult
 
-        self.state.elo[winner_id] = elo_w + k_w * (1 - expected_w)
-        self.state.elo[loser_id] = elo_l + k_l * (0 - (1 - expected_w))
+        # Margin-weighted Elo (WElo): use set proportion instead of binary 1/0
+        # A 6-0 6-0 win gives score ~1.0, a 7-6 6-7 7-6 gives ~0.6
+        actual_score = 1.0  # Default: binary win
+        if match is not None:
+            n_sets = match.get("n_sets", np.nan)
+            if _valid(n_sets) and n_sets > 0:
+                # Winner won ceil(best_of/2) sets, loser won (n_sets - ceil(best_of/2))
+                sets_to_win = (best_of + 1) // 2
+                winner_sets = sets_to_win
+                loser_sets = int(n_sets) - sets_to_win
+                if loser_sets >= 0:
+                    actual_score = winner_sets / (winner_sets + loser_sets)
+                    # Blend: 70% margin-weighted + 30% binary (don't over-penalize close wins)
+                    actual_score = 0.7 * actual_score + 0.3 * 1.0
+
+        self.state.elo[winner_id] = elo_w + k_w * (actual_score - expected_w)
+        self.state.elo[loser_id] = elo_l + k_l * ((1 - actual_score) - (1 - expected_w))
 
         # Surface-specific Elo
         surf_w = self.state.elo_surface.get((winner_id, surface), init)
