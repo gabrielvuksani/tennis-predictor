@@ -413,6 +413,24 @@ body {
     font-weight: 500;
 }
 
+.conf-badge {
+    font-size: 0.6rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 100px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+
+.conf-badge.high {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--accent);
+}
+
+.conf-badge.med {
+    background: rgba(245, 158, 11, 0.12);
+    color: var(--warning);
+}
+
 /* === Stats Grid === */
 .stats-grid {
     display: grid;
@@ -657,15 +675,21 @@ function renderPredictions(predictions) {
         const p1Pct = Math.round(p.prob_p1 * 100);
         const p2Pct = 100 - p1Pct;
         const p1Fav = p1Pct >= 50;
-        const conf = Math.abs(p1Pct - 50) * 2;
+        const favName = p1Fav ? p.player1 : p.player2;
+        const favPct = Math.max(p1Pct, p2Pct);
         const surface = p.surface || '';
         const tourney = p.tournament || '';
+        const rec = p.recommendation || '';
+        const confTier = p.confidence_tier || '';
+        const confBadge = confTier === 'high' ? '<span class="conf-badge high">HIGH CONF</span>'
+                        : confTier === 'medium' ? '<span class="conf-badge med">MEDIUM</span>'
+                        : '';
 
         return `
             <div class="match-card" role="listitem">
                 <div class="player">
                     <span class="player-name ${p1Fav ? 'fav' : 'dog'}">${p.player1}</span>
-                    <span class="player-meta">${p.p1_rank ? 'Rank #' + p.p1_rank : ''}</span>
+                    <span class="player-meta">${p.p1_rank ? '#' + p.p1_rank + ' ATP' : ''}</span>
                 </div>
                 <div class="prob-visual">
                     <div class="prob-numbers">
@@ -679,11 +703,12 @@ function renderPredictions(predictions) {
                     <div class="match-meta">
                         ${tourney ? `<span class="match-tag">${tourney}</span>` : ''}
                         ${surface ? `<span class="match-tag">${surface}</span>` : ''}
+                        ${confBadge}
                     </div>
                 </div>
                 <div class="player right">
                     <span class="player-name ${!p1Fav ? 'fav' : 'dog'}">${p.player2}</span>
-                    <span class="player-meta">${p.p2_rank ? 'Rank #' + p.p2_rank : ''}</span>
+                    <span class="player-meta">${p.p2_rank ? '#' + p.p2_rank + ' ATP' : ''}</span>
                 </div>
             </div>`;
     }).join('');

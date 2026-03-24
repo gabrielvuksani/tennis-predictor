@@ -172,27 +172,35 @@ def _predict_match(
         if p2_id is None or elo2 == init:
             prob_p1 = 0.4 * prob_p1 + 0.6 * 0.5
 
-        # Blend with point-level simulation (if serve/return stats available)
+        # Blend with point-level simulation ONLY if we have real player data
         try:
             from tennis_predictor.models.point_sim import get_point_sim_prediction
             p1_hist = guard_state.match_history.get(p1_id, []) if p1_id else []
             p2_hist = guard_state.match_history.get(p2_id, []) if p2_id else []
 
-            p1_spw = np.nanmean([m.get("serve_pts_won_pct", np.nan) for m in p1_hist[-20:]]) if p1_hist else None
-            p1_rpw = np.nanmean([m.get("return_pts_won_pct", np.nan) for m in p1_hist[-20:]]) if p1_hist else None
-            p2_spw = np.nanmean([m.get("serve_pts_won_pct", np.nan) for m in p2_hist[-20:]]) if p2_hist else None
-            p2_rpw = np.nanmean([m.get("return_pts_won_pct", np.nan) for m in p2_hist[-20:]]) if p2_hist else None
+            # Only compute if BOTH players have serve/return stats
+            if len(p1_hist) >= 5 and len(p2_hist) >= 5:
+                p1_spw_vals = [m.get("serve_pts_won_pct") for m in p1_hist[-20:] if m.get("serve_pts_won_pct") is not None and not np.isnan(m.get("serve_pts_won_pct", np.nan))]
+                p1_rpw_vals = [m.get("return_pts_won_pct") for m in p1_hist[-20:] if m.get("return_pts_won_pct") is not None and not np.isnan(m.get("return_pts_won_pct", np.nan))]
+                p2_spw_vals = [m.get("serve_pts_won_pct") for m in p2_hist[-20:] if m.get("serve_pts_won_pct") is not None and not np.isnan(m.get("serve_pts_won_pct", np.nan))]
+                p2_rpw_vals = [m.get("return_pts_won_pct") for m in p2_hist[-20:] if m.get("return_pts_won_pct") is not None and not np.isnan(m.get("return_pts_won_pct", np.nan))]
 
-            best_of = 5 if match.get("tournament", "").lower() in [
-                "australian open", "roland garros", "wimbledon", "us open"
-            ] else 3
+                # Only blend if we have REAL stats for all four values
+                if len(p1_spw_vals) >= 3 and len(p1_rpw_vals) >= 3 and len(p2_spw_vals) >= 3 and len(p2_rpw_vals) >= 3:
+                    best_of = 5 if match.get("tournament", "").lower() in [
+                        "australian open", "roland garros", "wimbledon", "us open"
+                    ] else 3
 
-            sim_prob = get_point_sim_prediction(p1_spw, p1_rpw, p2_spw, p2_rpw, best_of)
-            if sim_prob is not None and not np.isnan(sim_prob):
-                # Blend: 70% Elo-based, 30% point simulation
-                prob_p1 = 0.7 * prob_p1 + 0.3 * sim_prob
+                    sim_prob = get_point_sim_prediction(
+                        np.mean(p1_spw_vals), np.mean(p1_rpw_vals),
+                        np.mean(p2_spw_vals), np.mean(p2_rpw_vals),
+                        best_of,
+                    )
+                    if sim_prob is not None and not np.isnan(sim_prob):
+                        # Blend: 85% Elo + 15% point sim (Elo is primary, sim is supplementary)
+                        prob_p1 = 0.85 * prob_p1 + 0.15 * sim_prob
         except Exception:
-            pass  # Point sim is supplementary; don't fail if it errors
+            pass
 
     prob_p1 = max(0.05, min(0.95, prob_p1))
 
