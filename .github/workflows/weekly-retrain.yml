@@ -87,7 +87,7 @@ jobs:
             data/raw/tennis_atp/
             data/raw/odds/
             data/cache/
-          key: data-cache-v1
+          key: data-cache-${{ github.run_id }}
 
       - name: Save model state (for daily runs)
         uses: actions/cache/save@v4
@@ -99,7 +99,7 @@ jobs:
             data/raw/odds/
             data/cache/
             data/predictions/
-          key: model-state-v1
+          key: model-state-${{ github.run_id }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

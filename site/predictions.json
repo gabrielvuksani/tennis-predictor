@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-23T23:46:24.197336",
+  "generated_at": "2026-03-23T23:57:13.599065",
   "model_version": "0.1.0",
   "predictions": [
     {
@@ -14,8 +14,10 @@
       "p1_rank": 200,
       "p2_rank": 98,
       "confidence": 0.879,
+      "intransitivity_score": 0,
+      "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:46:24.193781",
+      "generated_at": "2026-03-23T23:57:13.594681",
       "edge_signal": "high_confidence"
     },
     {
@@ -30,8 +32,10 @@
       "p1_rank": 77,
       "p2_rank": 81,
       "confidence": 0.768,
+      "intransitivity_score": 0,
+      "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:46:24.196552",
+      "generated_at": "2026-03-23T23:57:13.597587",
       "edge_signal": "high_confidence"
     },
     {
@@ -46,8 +50,10 @@
       "p1_rank": 77,
       "p2_rank": 200,
       "confidence": 0.652,
+      "intransitivity_score": 0,
+      "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:46:24.192835",
+      "generated_at": "2026-03-23T23:57:13.593687",
       "edge_signal": "high_confidence"
     },
     {
@@ -62,8 +68,10 @@
       "p1_rank": 200,
       "p2_rank": 176,
       "confidence": 0.624,
+      "intransitivity_score": 0,
+      "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:46:24.188494",
+      "generated_at": "2026-03-23T23:57:13.589429",
       "edge_signal": "high_confidence"
     },
     {
@@ -78,8 +86,10 @@
       "p1_rank": 131,
       "p2_rank": 77,
       "confidence": 0.542,
+      "intransitivity_score": 0,
+      "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:46:24.190436",
+      "generated_at": "2026-03-23T23:57:13.591335",
       "edge_signal": "none"
     },
     {
@@ -94,8 +104,10 @@
       "p1_rank": 62,
       "p2_rank": 200,
       "confidence": 0.515,
+      "intransitivity_score": 0,
+      "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:46:24.189463",
+      "generated_at": "2026-03-23T23:57:13.590393",
       "edge_signal": "none"
     },
     {
@@ -110,8 +122,10 @@
       "p1_rank": 22,
       "p2_rank": 200,
       "confidence": 0.493,
+      "intransitivity_score": 0,
+      "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:46:24.191869",
+      "generated_at": "2026-03-23T23:57:13.592726",
       "edge_signal": "none"
     },
     {
@@ -126,8 +140,10 @@
       "p1_rank": 77,
       "p2_rank": 22,
       "confidence": 0.424,
+      "intransitivity_score": 0,
+      "sharp_signal": 0.0,
       "model": "elo_surface_blend",
-      "generated_at": "2026-03-23T23:46:24.195152",
+      "generated_at": "2026-03-23T23:57:13.596144",
       "edge_signal": "none"
     }
   ],

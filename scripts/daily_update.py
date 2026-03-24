@@ -211,7 +211,6 @@ def _check_prediction_accuracy(predictions: list[dict]) -> dict | None:
     if not completed or not predictions:
         return None
 
-    correct = 0
     total = 0
     results = []
 
@@ -225,9 +224,6 @@ def _check_prediction_accuracy(predictions: list[dict]) -> dict | None:
             m_p2 = match.get("player2", "").lower()
 
             if (p1 in m_p1 or m_p1 in p1) and (p2 in m_p2 or m_p2 in p2):
-                # Found the match — check result
-                # In Flashscore finished data, the first player listed won
-                # (this is a simplification — actual winner detection needs score parsing)
                 predicted_winner = pred["player1"] if pred["prob_p1"] >= 0.5 else pred["player2"]
                 prob = max(pred["prob_p1"], pred["prob_p2"])
 
@@ -241,8 +237,7 @@ def _check_prediction_accuracy(predictions: list[dict]) -> dict | None:
                 total += 1
                 break
 
-    accuracy = correct / total if total > 0 else 0
-    print(f"  Prediction tracking: {total} matches tracked")
+    print(f"  Prediction tracking: {total} matches found in completed results")
 
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),
@@ -317,7 +312,8 @@ def retrain_model():
             fetch_odds=False,      # Use cache
             compute_intransitivity=False,  # Use cache
         )
-        print(f"  Retrain complete: acc={results['best_stats'].get('accuracy', '?'):.3f}")
+        acc = results.get('best_stats', {}).get('accuracy', 0)
+        print(f"  Retrain complete: acc={acc:.3f}" if isinstance(acc, (int, float)) else f"  Retrain complete")
     except Exception as e:
         print(f"  Retrain failed: {e}")
         print("  Predictions will use existing model")

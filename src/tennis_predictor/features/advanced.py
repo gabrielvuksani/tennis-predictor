@@ -281,8 +281,8 @@ def _streak_features(state, p1: str, p2: str) -> dict:
 def _elo_velocity_features(state, p1: str, p2: str, surface: str) -> dict:
     """Rate of change of Elo — is the player trending up or down?"""
     features = {}
-    from tennis_predictor.config import ELO_CONFIG
-    init = ELO_CONFIG["initial_rating"]
+    from tennis_predictor.hyperparams import HP
+    init = HP.elo.initial_rating
 
     for prefix, pid in [("p1", p1), ("p2", p2)]:
         history = state.match_history.get(pid, [])

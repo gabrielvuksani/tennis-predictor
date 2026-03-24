@@ -18,7 +18,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from tennis_predictor.config import PROCESSED_DIR, PREDICTIONS_DIR, SITE_DIR, ELO_CONFIG
+from tennis_predictor.config import PROCESSED_DIR, PREDICTIONS_DIR, SITE_DIR
+from tennis_predictor.hyperparams import HP
 
 
 def run_live_predictions() -> list[dict]:
@@ -140,7 +141,7 @@ def _predict_match(
         else:
             return None
     else:
-        init = ELO_CONFIG["initial_rating"]
+        init = HP.elo.initial_rating
 
         # Get Elo ratings
         elo1 = guard_state.elo.get(p1_id, init) if p1_id else init
@@ -178,6 +179,8 @@ def _predict_match(
         "p1_rank": match.get("p1_rank"),
         "p2_rank": match.get("p2_rank"),
         "confidence": round(confidence, 3),
+        "intransitivity_score": match.get("intransitivity_score", 0),
+        "sharp_signal": match.get("sharp_signal", 0),
         "model": "elo_surface_blend",
         "generated_at": datetime.now().isoformat(),
     }
