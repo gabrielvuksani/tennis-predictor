@@ -5,70 +5,89 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tennis Predictor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
-<div class="app">
-  <nav class="topbar"><div class="tb-in">
-    <div class="brand"><span class="dot"></span> Tennis Predictor</div>
-    <div class="tb-right">
-      <div class="tabs" id="tabs">
-        <button class="tab active" data-v="predictions">Predictions</button>
-        <button class="tab" data-v="results">Results</button>
-        <button class="tab" data-v="analytics">Analytics</button>
-      </div>
-      <button class="theme-btn" id="theme-toggle" title="Toggle theme">&#9790;</button>
+<!-- Topbar -->
+<nav class="topbar"><div class="tb-in">
+  <div class="brand">
+    <div class="brand-icon">T</div>
+    <span class="brand-text">Tennis Predictor</span>
+    <span class="brand-tag">PRO</span>
+  </div>
+  <div class="tb-right">
+    <div class="nav" id="top-nav">
+      <button class="nav-btn active" data-tab="predictions">Predictions</button>
+      <button class="nav-btn" data-tab="results">Results</button>
+      <button class="nav-btn" data-tab="analytics">Analytics</button>
     </div>
-  </div></nav>
+    <button class="theme-btn" id="theme-toggle" title="Toggle theme">&#9790;</button>
+  </div>
+</div></nav>
 
-  <main class="wrap">
+<!-- Metrics Strip -->
+<div class="metrics"><div class="metrics-grid" id="metrics-row"></div></div>
+
+<!-- Desktop/Tablet Layout -->
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="filters" id="filters">
+      <button class="filter-btn active" data-type="conf" data-val="all">All</button>
+      <button class="filter-btn" data-type="conf" data-val="high">High Conf</button>
+      <button class="filter-btn" data-type="conf" data-val="medium">Medium</button>
+      <button class="filter-btn" data-type="surface" data-val="all">All Surfaces</button>
+      <button class="filter-btn" data-type="surface" data-val="hard">Hard</button>
+      <button class="filter-btn" data-type="surface" data-val="clay">Clay</button>
+      <button class="filter-btn" data-type="surface" data-val="grass">Grass</button>
+      <span class="filter-count" id="filter-count"></span>
+    </div>
+    <div id="match-list"></div>
+  </aside>
+  <main class="main-panel">
     <div id="view-predictions" class="view active">
-      <header class="hero"><h1>Match <span class="hl">Predictions</span></h1>
-      <p class="sub" id="status-line">Loading...</p></header>
-      <div id="cards"></div>
+      <div class="detail-topbar" id="detail-topbar"></div>
+      <div id="detail-panel"></div>
     </div>
-
     <div id="view-results" class="view">
-      <header class="hero"><h1>Prediction <span class="hl">Results</span></h1>
-      <p class="sub">Track record of recent predictions</p></header>
       <div id="results-content"></div>
     </div>
-
     <div id="view-analytics" class="view">
-      <header class="hero"><h1><span class="hl">Analytics</span></h1>
-      <p class="sub">Model performance and calibration</p></header>
-      <div class="grid4" id="perf"></div>
-      <div style="margin-top:1.5rem">
-        <h3 style="font-size:.95rem;margin-bottom:.8rem">Calibration</h3>
-        <p class="sub">Predicted probability vs actual win rate. Diagonal = perfect.</p>
-        <div class="chart-box"><canvas id="cal"></canvas></div>
+      <div class="metrics-grid" id="perf"></div>
+      <div class="chart-container" id="chart-wrap">
+        <div class="chart-title">Calibration</div>
+        <div class="chart-sub">Predicted probability vs actual win rate. Diagonal = perfect.</div>
+        <canvas id="cal"></canvas>
+        <div class="cal-tooltip" id="cal-tooltip"></div>
       </div>
-      <div style="margin-top:1.5rem" id="system-info">
-        <h3 style="font-size:.95rem;margin-bottom:.8rem">System</h3>
-        <div class="grid4">
-          <div class="info-card"><strong>244</strong><span>Features</span><p>Elo, Glicko-2, serve/return, fatigue, weather, court speed, sentiment</p></div>
-          <div class="info-card"><strong>320K</strong><span>Matches</span><p>1991-2026. JeffSackmann + TennisMyLife databases</p></div>
-          <div class="info-card"><strong>Zero</strong><span>Leakage</span><p>TemporalGuard ensures no future data leaks into predictions</p></div>
-          <div class="info-card"><strong>24/7</strong><span>Autonomous</span><p>Self-learning. Retrains daily. Drift detection triggers emergency retrains</p></div>
-        </div>
-      </div>
+      <div id="system-info"></div>
     </div>
   </main>
-
-  <!-- Player Modal -->
-  <div class="modal-overlay" id="player-modal">
-    <div class="modal">
-      <button class="modal-close" id="modal-close">&times;</button>
-      <div id="player-content"></div>
-    </div>
-  </div>
-
-  <footer class="foot">
-    <p>10,361 players &middot; 12 data sources &middot; All free</p>
-    <p><a href="https://github.com/gabrielvuksani/tennis-predictor">GitHub</a></p>
-  </footer>
 </div>
+
+<!-- Mobile Containers -->
+<div class="mobile-container" id="mobile-container">
+  <div class="mobile-list" id="mobile-list"></div>
+  <div class="mobile-detail" id="mobile-detail"></div>
+</div>
+
+<!-- Player Modal -->
+<div class="modal-overlay" id="player-modal">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<!-- Bottom Nav (mobile) -->
+<div class="bottom-nav" id="bottom-nav">
+  <button class="bn-btn active" data-tab="predictions">Predictions</button>
+  <button class="bn-btn" data-tab="results">Results</button>
+  <button class="bn-btn" data-tab="analytics">Analytics</button>
+</div>
+
+<footer class="foot">
+  <p>10,361 players &middot; 12 data sources &middot; All free &middot;
+  <a href="https://github.com/gabrielvuksani/tennis-predictor">GitHub</a></p>
+</footer>
 <script src="assets/js/app.js"></script>
 </body>
 </html>
