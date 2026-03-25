@@ -59,6 +59,9 @@ def extract_advanced_features(
     # === 1. SERVE / RETURN DOMINANCE FEATURES ===
     features.update(_serve_return_features(state, p1_id, p2_id))
 
+    # === 1b. SURFACE-SPECIFIC SERVE/RETURN FEATURES ===
+    features.update(_surface_specific_features(state, p1_id, p2_id, surface))
+
     # === 2. EWMA ROLLING STATS ===
     features.update(_ewma_features(state, p1_id, p2_id, surface))
 
@@ -197,10 +200,70 @@ def _serve_return_features(state, p1: str, p2: str) -> dict:
     return features
 
 
+def _surface_specific_features(state, p1: str, p2: str, current_surface: str) -> dict:
+    """Serve/return stats filtered to the current match surface (last 20 on-surface matches).
+
+    Clay return performance differs wildly from hard court — computing these
+    per-surface gives the model a much sharper signal than the cross-surface
+    rolling averages from _serve_return_features.
+    """
+    features = {}
+    for prefix, pid in [("p1", p1), ("p2", p2)]:
+        history = state.match_history.get(pid, [])
+        surface_history = [
+            m for m in history if m.get("surface") == current_surface
+        ]
+        recent = surface_history[-20:] if surface_history else []
+
+        if recent:
+            # Serve points won % on this surface
+            vals = [m.get("serve_pts_won_pct", np.nan) for m in recent]
+            vals = [v for v in vals if _v(v)]
+            features[f"{prefix}_surface_serve_pts_won"] = np.mean(vals) if vals else np.nan
+
+            # Return points won % on this surface
+            vals = [m.get("return_pts_won_pct", np.nan) for m in recent]
+            vals = [v for v in vals if _v(v)]
+            features[f"{prefix}_surface_return_pts_won"] = np.mean(vals) if vals else np.nan
+
+            # Hold percentage on this surface
+            vals = [m.get("hold_pct", np.nan) for m in recent]
+            vals = [v for v in vals if _v(v)]
+            features[f"{prefix}_surface_hold_pct"] = np.mean(vals) if vals else np.nan
+
+            # Break percentage on this surface
+            vals = [m.get("break_pct", np.nan) for m in recent]
+            vals = [v for v in vals if _v(v)]
+            features[f"{prefix}_surface_break_pct"] = np.mean(vals) if vals else np.nan
+        else:
+            features[f"{prefix}_surface_serve_pts_won"] = np.nan
+            features[f"{prefix}_surface_return_pts_won"] = np.nan
+            features[f"{prefix}_surface_hold_pct"] = np.nan
+            features[f"{prefix}_surface_break_pct"] = np.nan
+
+    # Difference features
+    for stat in ["surface_serve_pts_won", "surface_return_pts_won",
+                 "surface_hold_pct", "surface_break_pct"]:
+        features[f"diff_{stat}"] = _sdiff(
+            features.get(f"p1_{stat}"), features.get(f"p2_{stat}")
+        )
+
+    return features
+
+
 def _ewma_features(state, p1: str, p2: str, surface: str) -> dict:
     """Exponentially weighted moving averages — recent matches matter more."""
     features = {}
     alpha = HP.features.ewma_alpha  # Decay factor — ~7 match half-life
+
+    # Additional stat keys to compute EWMA for (key in match history -> feature suffix)
+    extra_stats = [
+        ("second_serve_won_pct", "2nd_serve_won"),
+        ("bp_save_pct", "bp_save"),
+        ("return_pts_won_pct", "rpw"),
+        ("serve_pts_won_pct", "spw"),
+        ("ace_rate", "ace_rate"),
+    ]
 
     for prefix, pid in [("p1", p1), ("p2", p2)]:
         history = state.match_history.get(pid, [])
@@ -220,14 +283,27 @@ def _ewma_features(state, p1: str, p2: str, surface: str) -> dict:
             fsp = [m.get("first_serve_pct", np.nan) for m in recent]
             fsp = [v for v in fsp if _v(v)]
             features[f"{prefix}_ewma_1st_serve_pct"] = _ewma(fsp, alpha) if fsp else np.nan
+
+            # Expanded EWMA stats
+            for stat_key, feat_name in extra_stats:
+                vals = [m.get(stat_key, np.nan) for m in recent]
+                vals = [v for v in vals if _v(v)]
+                features[f"{prefix}_ewma_{feat_name}"] = _ewma(vals, alpha) if vals else np.nan
         else:
             features[f"{prefix}_ewma_winrate"] = np.nan
             features[f"{prefix}_ewma_surface_winrate"] = np.nan
             features[f"{prefix}_ewma_1st_serve_pct"] = np.nan
+            for _, feat_name in extra_stats:
+                features[f"{prefix}_ewma_{feat_name}"] = np.nan
 
+    # Difference features for all EWMA stats
     features["diff_ewma_winrate"] = _sdiff(
         features.get("p1_ewma_winrate"), features.get("p2_ewma_winrate")
     )
+    for _, feat_name in extra_stats:
+        features[f"diff_ewma_{feat_name}"] = _sdiff(
+            features.get(f"p1_ewma_{feat_name}"), features.get(f"p2_ewma_{feat_name}")
+        )
     return features
 
 
@@ -475,29 +551,40 @@ def _common_opponent_features(state, p1: str, p2: str) -> dict:
             "common_opp_p2_winrate": np.nan,
         }
 
-    # Build opponent sets from recent matches (using opponent_rank as proxy for ID)
-    # Since we don't store opponent IDs directly, use a different approach:
-    # Find opponents both players have faced by checking the H2H records
-    p1_opponents: dict[str, list[bool]] = {}  # opponent_rank -> [won/lost]
+    # Build opponent sets from recent matches.
+    # Prefer opponent_id (exact) when available, fall back to opponent_rank (proxy).
+    p1_opponents: dict[str, list[bool]] = {}  # key -> [won/lost]
     p2_opponents: dict[str, list[bool]] = {}
 
     for m in p1_history[-50:]:
-        opp_rank = m.get("opponent_rank")
-        if _v(opp_rank):
-            key = str(int(opp_rank))
-            if key not in p1_opponents:
-                p1_opponents[key] = []
-            p1_opponents[key].append(m["won"])
+        opp_id = m.get("opponent_id")
+        if opp_id:
+            key = str(opp_id)
+        else:
+            opp_rank = m.get("opponent_rank")
+            if _v(opp_rank):
+                key = f"rank_{int(opp_rank)}"
+            else:
+                continue
+        if key not in p1_opponents:
+            p1_opponents[key] = []
+        p1_opponents[key].append(m["won"])
 
     for m in p2_history[-50:]:
-        opp_rank = m.get("opponent_rank")
-        if _v(opp_rank):
-            key = str(int(opp_rank))
-            if key not in p2_opponents:
-                p2_opponents[key] = []
-            p2_opponents[key].append(m["won"])
+        opp_id = m.get("opponent_id")
+        if opp_id:
+            key = str(opp_id)
+        else:
+            opp_rank = m.get("opponent_rank")
+            if _v(opp_rank):
+                key = f"rank_{int(opp_rank)}"
+            else:
+                continue
+        if key not in p2_opponents:
+            p2_opponents[key] = []
+        p2_opponents[key].append(m["won"])
 
-    # Find common opponents (by rank — not perfect but works for top players)
+    # Find common opponents (by ID when available, rank as fallback)
     common = set(p1_opponents.keys()) & set(p2_opponents.keys())
 
     if len(common) < 2:

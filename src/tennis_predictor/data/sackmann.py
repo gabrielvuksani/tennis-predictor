@@ -87,7 +87,11 @@ def load_rankings(start_year: int = 1985) -> pd.DataFrame:
 def _parse_score(score: str) -> dict:
     """Parse a match score string into structured data."""
     if pd.isna(score) or not score:
-        return {"n_sets": np.nan, "retirement": False, "walkover": False, "tiebreaks": 0}
+        return {
+            "n_sets": np.nan, "retirement": False, "walkover": False, "tiebreaks": 0,
+            "deciding_set": False, "straight_sets": False,
+            "sets_won_winner": np.nan, "sets_won_loser": np.nan, "tiebreak_count": 0,
+        }
 
     score = str(score).strip()
     retirement = any(tag in score.upper() for tag in ["RET", "ABD", "DEF", "UNP"])
@@ -100,11 +104,40 @@ def _parse_score(score: str) -> dict:
     sets = [s.strip() for s in score.split() if "-" in s]
     n_sets = len(sets)
 
+    # Parse set-level details: count sets won by each side
+    sets_won_winner = 0
+    sets_won_loser = 0
+    for s in sets:
+        # Strip tiebreak score in parentheses, e.g. "7-6(4)" -> "7-6"
+        clean = s.split("(")[0]
+        parts = clean.split("-")
+        if len(parts) == 2:
+            try:
+                games_a = int(parts[0])
+                games_b = int(parts[1])
+                if games_a > games_b:
+                    sets_won_winner += 1
+                elif games_b > games_a:
+                    sets_won_loser += 1
+            except ValueError:
+                pass
+
     return {
         "n_sets": n_sets if n_sets > 0 else np.nan,
         "retirement": retirement,
         "walkover": walkover,
         "tiebreaks": tiebreaks,
+        "deciding_set": bool(
+            n_sets > 0 and sets_won_loser > 0
+            and sets_won_winner == sets_won_loser + 1
+            and not retirement
+        ),
+        "straight_sets": bool(
+            n_sets > 0 and sets_won_loser == 0 and not retirement
+        ),
+        "sets_won_winner": sets_won_winner if n_sets > 0 else np.nan,
+        "sets_won_loser": sets_won_loser if n_sets > 0 else np.nan,
+        "tiebreak_count": tiebreaks,
     }
 
 

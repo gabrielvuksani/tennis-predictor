@@ -393,15 +393,22 @@ def stratified_evaluation(
                     "brier": brier_score(y_true[mask], y_prob[mask]),
                 }
 
-    # By round (early vs late)
+    # By round (early / middle / late)
     if "round" in metadata.columns:
         early = metadata["round"].isin(["R128", "R64", "R32"]).values
+        middle = metadata["round"].isin(["R16"]).values
         late = metadata["round"].isin(["QF", "SF", "F"]).values
         if early.sum() > 50:
             results["strata"]["round_early"] = {
                 "n": int(early.sum()),
                 "accuracy": accuracy(y_true[early], y_prob[early]),
                 "brier": brier_score(y_true[early], y_prob[early]),
+            }
+        if middle.sum() > 50:
+            results["strata"]["round_middle"] = {
+                "n": int(middle.sum()),
+                "accuracy": accuracy(y_true[middle], y_prob[middle]),
+                "brier": brier_score(y_true[middle], y_prob[middle]),
             }
         if late.sum() > 50:
             results["strata"]["round_late"] = {
@@ -411,7 +418,7 @@ def stratified_evaluation(
             }
 
     # By confidence bucket (how good is the model when it's confident?)
-    confident = y_prob >= 0.7
+    confident = (y_prob >= 0.7) | (y_prob <= 0.3)
     uncertain = (y_prob >= 0.4) & (y_prob <= 0.6)
     if confident.sum() > 50:
         results["strata"]["conf_high"] = {

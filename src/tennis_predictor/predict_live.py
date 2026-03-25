@@ -18,8 +18,76 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from tennis_predictor.config import PROCESSED_DIR, PREDICTIONS_DIR, SITE_DIR
+from tennis_predictor.config import PROCESSED_DIR, PREDICTIONS_DIR, SITE_DIR, SACKMANN_DIR
 from tennis_predictor.hyperparams import HP
+
+
+# --- Player bio cache (age, height, handedness from Sackmann atp_players.csv) ---
+_PLAYER_BIO_CACHE: dict | None = None
+
+
+def _load_player_bio() -> dict:
+    """Load player bio data (dob, height, hand) keyed by player_id string.
+
+    Returns a dict: player_id_str -> {"dob": Timestamp|NaT, "ht": float|nan, "hand": str}
+    Cached after first call.
+    """
+    global _PLAYER_BIO_CACHE
+    if _PLAYER_BIO_CACHE is not None:
+        return _PLAYER_BIO_CACHE
+
+    _PLAYER_BIO_CACHE = {}
+    players_path = SACKMANN_DIR / "atp_players.csv"
+    if not players_path.exists():
+        return _PLAYER_BIO_CACHE
+
+    try:
+        players = pd.read_csv(players_path, dtype={"player_id": str})
+        players["dob"] = pd.to_datetime(players["dob"], format="%Y%m%d", errors="coerce")
+        for _, row in players.iterrows():
+            pid = str(row["player_id"])
+            _PLAYER_BIO_CACHE[pid] = {
+                "dob": row["dob"],
+                "ht": float(row["height"]) if pd.notna(row.get("height")) else np.nan,
+                "hand": str(row.get("hand", "U")) if pd.notna(row.get("hand")) else "U",
+            }
+    except Exception:
+        pass
+
+    return _PLAYER_BIO_CACHE
+
+
+# --- Court speed cache (loaded once from local cache files) ---
+_COURT_SPEED_CACHE: pd.DataFrame | None = None
+
+
+def _load_court_speed_data() -> pd.DataFrame:
+    """Load court speed data from local cache. No network requests.
+
+    Reads the cached JSON files that load_court_speed_history() writes.
+    Returns empty DataFrame if no cached data exists.
+    """
+    global _COURT_SPEED_CACHE
+    if _COURT_SPEED_CACHE is not None:
+        return _COURT_SPEED_CACHE
+
+    from tennis_predictor.config import CACHE_DIR
+
+    cache_dir = CACHE_DIR / "court_speed"
+    frames = []
+    if cache_dir.exists():
+        for f in sorted(cache_dir.glob("ta_speed_*.json")):
+            try:
+                data = json.loads(f.read_text())
+                if data:
+                    frames.append(pd.DataFrame(data))
+            except Exception:
+                continue
+
+    _COURT_SPEED_CACHE = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(
+        columns=["tournament", "surface", "year", "speed_rating"]
+    )
+    return _COURT_SPEED_CACHE
 
 
 def run_live_predictions() -> list[dict]:
@@ -361,12 +429,41 @@ def _predict_with_ensemble(
         from tennis_predictor.temporal.guard import TemporalGuard
         mock_guard = TemporalGuard(state=guard_state)
 
+        # --- Look up player bio (age, height, handedness) from Sackmann data ---
+        now = pd.Timestamp.now()
+        bio = _load_player_bio()
+        p1_bio = bio.get(p1_id, {}) if p1_id else {}
+        p2_bio = bio.get(p2_id, {}) if p2_id else {}
+
+        p1_age = np.nan
+        if p1_bio.get("dob") is not None and pd.notna(p1_bio["dob"]):
+            p1_age = (now - p1_bio["dob"]).days / 365.25
+        p2_age = np.nan
+        if p2_bio.get("dob") is not None and pd.notna(p2_bio["dob"]):
+            p2_age = (now - p2_bio["dob"]).days / 365.25
+
+        p1_ht = p1_bio.get("ht", np.nan)
+        p2_ht = p2_bio.get("ht", np.nan)
+        p1_hand = p1_bio.get("hand", "U")
+        p2_hand = p2_bio.get("hand", "U")
+
+        # --- Look up court speed from local cache ---
+        court_speed = np.nan
+        tourney_name = match.get("tournament", "")
+        try:
+            from tennis_predictor.data.court_speed import get_tournament_speed
+            speed_data = _load_court_speed_data()
+            if len(speed_data) > 0:
+                court_speed = get_tournament_speed(tourney_name, now.year, speed_data)
+        except Exception:
+            pass
+
         match_series = pd.Series({
             "match_id": f"live_{match.get('player1', '')}_{match.get('player2', '')}",
             "p1_id": p1_id or "",
             "p2_id": p2_id or "",
-            "tourney_date": pd.Timestamp.now(),
-            "tourney_name": match.get("tournament", ""),
+            "tourney_date": now,
+            "tourney_name": tourney_name,
             "tourney_level": "A",
             "surface": surface,
             "round": "R32",
@@ -376,16 +473,16 @@ def _predict_with_ensemble(
             "p2_rank": match.get("p2_rank", np.nan),
             "p1_rank_points": np.nan,
             "p2_rank_points": np.nan,
-            "p1_age": np.nan,
-            "p2_age": np.nan,
-            "p1_ht": np.nan,
-            "p2_ht": np.nan,
+            "p1_age": p1_age,
+            "p2_age": p2_age,
+            "p1_ht": p1_ht,
+            "p2_ht": p2_ht,
             "p1_entry": "",
             "p2_entry": "",
             "p1_seed": "",
             "p2_seed": "",
-            "p1_hand": "R",
-            "p2_hand": "R",
+            "p1_hand": p1_hand,
+            "p2_hand": p2_hand,
             "p1_ioc": "",
             "p2_ioc": "",
             "minutes": np.nan,
@@ -400,7 +497,7 @@ def _predict_with_ensemble(
             "l_1stIn": np.nan, "l_1stWon": np.nan, "l_2ndWon": np.nan,
             "l_SvGms": np.nan, "l_bpSaved": np.nan, "l_bpFaced": np.nan,
             # Supplementary
-            "court_speed": np.nan,
+            "court_speed": court_speed,
             "weather_temp_max": np.nan, "weather_temp_min": np.nan,
             "weather_precipitation": np.nan, "weather_wind_max": np.nan,
             "weather_wind_gust_max": np.nan, "weather_altitude": np.nan,

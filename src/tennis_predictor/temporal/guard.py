@@ -159,6 +159,9 @@ class TemporalGuard:
         # === TOURNAMENT HISTORY ===
         features.update(self._extract_tournament_features(p1_id, p2_id, tourney_name))
 
+        # === SET-LEVEL FEATURES ===
+        features.update(self._extract_set_level_features(p1_id, p2_id))
+
         # === STATIC MATCH CONTEXT ===
         features["surface_Hard"] = int(surface == "Hard")
         features["surface_Clay"] = int(surface == "Clay")
@@ -523,6 +526,69 @@ class TemporalGuard:
 
         return features
 
+    def _extract_set_level_features(self, p1: str, p2: str) -> dict:
+        """Extract set-level features from recent match history.
+
+        Uses last 20 matches per player. Handles old history records that
+        lack the new set-level keys via .get(key, None).
+        """
+        features: dict[str, Any] = {}
+        window = 20
+
+        for prefix, pid in [("p1", p1), ("p2", p2)]:
+            history = self.state.match_history.get(pid, [])
+            recent = history[-window:] if history else []
+
+            # Filter to matches that have set-level data (use .get for backwards compat)
+            straight_vals = [m.get("straight_sets", None) for m in recent
+                             if m.get("straight_sets", None) is not None]
+            deciding_vals = [m.get("deciding_set", None) for m in recent
+                             if m.get("deciding_set", None) is not None]
+            tiebreak_vals = [m.get("tiebreak_count", None) for m in recent
+                             if m.get("tiebreak_count", None) is not None]
+
+            # Straight set rate
+            if straight_vals:
+                features[f"{prefix}_straight_set_rate"] = (
+                    sum(1 for v in straight_vals if v) / len(straight_vals)
+                )
+            else:
+                features[f"{prefix}_straight_set_rate"] = np.nan
+
+            # Deciding set rate
+            if deciding_vals:
+                features[f"{prefix}_deciding_set_rate"] = (
+                    sum(1 for v in deciding_vals if v) / len(deciding_vals)
+                )
+            else:
+                features[f"{prefix}_deciding_set_rate"] = np.nan
+
+            # Deciding set win rate (wins in matches that went to a deciding set)
+            deciding_matches = [m for m in recent
+                                if m.get("deciding_set", None) is True]
+            if deciding_matches:
+                features[f"{prefix}_deciding_set_win_rate"] = (
+                    sum(1 for m in deciding_matches if m["won"]) / len(deciding_matches)
+                )
+            else:
+                features[f"{prefix}_deciding_set_win_rate"] = np.nan
+
+            # Average tiebreaks per match
+            if tiebreak_vals:
+                features[f"{prefix}_tiebreak_rate"] = np.mean(tiebreak_vals)
+            else:
+                features[f"{prefix}_tiebreak_rate"] = np.nan
+
+        # Diff features (p1 - p2)
+        for stat in ["straight_set_rate", "deciding_set_rate",
+                      "deciding_set_win_rate", "tiebreak_rate"]:
+            features[f"diff_{stat}"] = _safe_diff(
+                features.get(f"p1_{stat}", np.nan),
+                features.get(f"p2_{stat}", np.nan),
+            )
+
+        return features
+
     # === INTERNAL STATE UPDATERS ===
 
     def _update_elo(
@@ -578,19 +644,55 @@ class TemporalGuard:
         self.state.elo_surface[(winner_id, surface)] = surf_w + surf_k_w * (actual_score - expected_surf)
         self.state.elo_surface[(loser_id, surface)] = surf_l + surf_k_l * ((1 - actual_score) - (1 - expected_surf))
 
-        # Serve Elo (uses overall K-factor but separate rating pool)
+        # Serve Elo — use actual serve performance when stats are available
+        # Winner serve: (w_1stWon + w_2ndWon) / w_svpt
+        # Loser serve:  (l_1stWon + l_2ndWon) / l_svpt
+        actual_serve_w = actual_score  # fallback: match outcome
+        actual_serve_l = 1 - actual_score
+        if match is not None:
+            w_1stWon = match.get("w_1stWon", np.nan)
+            w_2ndWon = match.get("w_2ndWon", np.nan)
+            w_svpt = match.get("w_svpt", np.nan)
+            if _valid(w_1stWon) and _valid(w_2ndWon) and _valid(w_svpt) and w_svpt > 0:
+                serve_pct_w = (w_1stWon + w_2ndWon) / w_svpt
+                actual_serve_w = max(0.0, min(1.0, (serve_pct_w - 0.5) * 2))
+            l_1stWon = match.get("l_1stWon", np.nan)
+            l_2ndWon = match.get("l_2ndWon", np.nan)
+            l_svpt = match.get("l_svpt", np.nan)
+            if _valid(l_1stWon) and _valid(l_2ndWon) and _valid(l_svpt) and l_svpt > 0:
+                serve_pct_l = (l_1stWon + l_2ndWon) / l_svpt
+                actual_serve_l = max(0.0, min(1.0, (serve_pct_l - 0.5) * 2))
+
         serve_w = self.state.elo_serve.get(winner_id, init)
         serve_l = self.state.elo_serve.get(loser_id, init)
         expected_serve = 1.0 / (1.0 + 10 ** ((serve_l - serve_w) / 400))
-        self.state.elo_serve[winner_id] = serve_w + k_w * _HP.elo.serve_k_multiplier * (actual_score - expected_serve)
-        self.state.elo_serve[loser_id] = serve_l + k_l * _HP.elo.serve_k_multiplier * ((1 - actual_score) - (1 - expected_serve))
+        self.state.elo_serve[winner_id] = serve_w + k_w * _HP.elo.serve_k_multiplier * (actual_serve_w - expected_serve)
+        self.state.elo_serve[loser_id] = serve_l + k_l * _HP.elo.serve_k_multiplier * (actual_serve_l - (1 - expected_serve))
 
-        # Return Elo
+        # Return Elo — use actual return performance when stats are available
+        # Winner return: (l_svpt - l_1stWon - l_2ndWon) / l_svpt
+        # Loser return:  (w_svpt - w_1stWon - w_2ndWon) / w_svpt
+        actual_return_w = actual_score  # fallback: match outcome
+        actual_return_l = 1 - actual_score
+        if match is not None:
+            l_svpt_r = match.get("l_svpt", np.nan)
+            l_1stWon_r = match.get("l_1stWon", np.nan)
+            l_2ndWon_r = match.get("l_2ndWon", np.nan)
+            if _valid(l_svpt_r) and _valid(l_1stWon_r) and _valid(l_2ndWon_r) and l_svpt_r > 0:
+                return_pct_w = (l_svpt_r - l_1stWon_r - l_2ndWon_r) / l_svpt_r
+                actual_return_w = max(0.0, min(1.0, (return_pct_w - 0.5) * 2))
+            w_svpt_r = match.get("w_svpt", np.nan)
+            w_1stWon_r = match.get("w_1stWon", np.nan)
+            w_2ndWon_r = match.get("w_2ndWon", np.nan)
+            if _valid(w_svpt_r) and _valid(w_1stWon_r) and _valid(w_2ndWon_r) and w_svpt_r > 0:
+                return_pct_l = (w_svpt_r - w_1stWon_r - w_2ndWon_r) / w_svpt_r
+                actual_return_l = max(0.0, min(1.0, (return_pct_l - 0.5) * 2))
+
         ret_w = self.state.elo_return.get(winner_id, init)
         ret_l = self.state.elo_return.get(loser_id, init)
         expected_ret = 1.0 / (1.0 + 10 ** ((ret_l - ret_w) / 400))
-        self.state.elo_return[winner_id] = ret_w + k_w * _HP.elo.serve_k_multiplier * (actual_score - expected_ret)
-        self.state.elo_return[loser_id] = ret_l + k_l * _HP.elo.serve_k_multiplier * ((1 - actual_score) - (1 - expected_ret))
+        self.state.elo_return[winner_id] = ret_w + k_w * _HP.elo.serve_k_multiplier * (actual_return_w - expected_ret)
+        self.state.elo_return[loser_id] = ret_l + k_l * _HP.elo.serve_k_multiplier * (actual_return_l - (1 - expected_ret))
 
     def _update_glicko2(
         self, winner_id: str, loser_id: str, match_date: pd.Timestamp
@@ -758,6 +860,19 @@ class TemporalGuard:
                     and bp_convert_faced > 0 else np.nan
                 ),
                 "opponent_rank": (match.get("p2_rank" if prefix == "p1" else "p1_rank", np.nan)),
+                "opponent_id": (p2_id if prefix == "p1" else p1_id),
+                "total_points_won_pct": (
+                    (first_won + second_won + (opp_svpt - opp_1st_won - opp_2nd_won))
+                    / (svpt + opp_svpt)
+                    if _valid(first_won) and _valid(second_won) and _valid(svpt)
+                    and _valid(opp_svpt) and _valid(opp_1st_won) and _valid(opp_2nd_won)
+                    and (svpt + opp_svpt) > 0
+                    else np.nan
+                ),
+                # Set-level fields
+                "deciding_set": bool(match.get("deciding_set", False)),
+                "straight_sets": bool(match.get("straight_sets", False)),
+                "tiebreak_count": int(match.get("tiebreak_count", 0) or 0),
             }
 
             if pid not in self.state.match_history:

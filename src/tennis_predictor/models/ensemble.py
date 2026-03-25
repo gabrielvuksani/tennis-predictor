@@ -40,8 +40,17 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
 
     # Key features to pass through to meta-learner for context-aware stacking
     PASSTHROUGH_FEATURES = [
-        "elo_diff", "surface_elo_diff", "rank_diff", "surface_Hard",
-        "surface_Clay", "surface_Grass", "tourney_level_G", "best_of_5",
+        "elo_diff", "surface_elo_diff", "rank_diff",
+        "surface_Hard", "surface_Clay", "surface_Grass",
+        "tourney_level_G", "best_of_5",
+        # Uncertainty signals
+        "glicko2_rd_p1", "glicko2_rd_p2",
+        # Market signal (when available)
+        "odds_implied_p1",
+        # Player history depth
+        "p1_match_count", "p2_match_count",
+        # H2H context
+        "h2h_total_matches",
     ]
 
     def __init__(
@@ -110,12 +119,19 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
             self.fitted_base_models_.append((name, fold_models))
 
         # Build meta-features: out-of-fold predictions + passthrough features
-        meta_input = oof_predictions
+        base_pred_columns = [name for name, _ in self.base_models]
+        meta_input = pd.DataFrame(oof_predictions, columns=base_pred_columns)
+
+        # Base model disagreement — tells the meta-learner when models disagree
+        meta_input['base_disagreement'] = meta_input[base_pred_columns].std(axis=1)
+
         if self.passthrough and isinstance(X, pd.DataFrame):
             pt_cols = [c for c in self.PASSTHROUGH_FEATURES if c in X.columns]
             if pt_cols:
-                pt_data = X[pt_cols].fillna(0).values
-                meta_input = np.hstack([oof_predictions, pt_data])
+                pt_data = X[pt_cols].fillna(0).reset_index(drop=True)
+                meta_input = pd.concat([meta_input, pt_data], axis=1)
+
+        meta_input = meta_input.values
 
         # Split meta-features temporally: first 80% trains meta-learner,
         # last 20% is held out for calibration. This prevents the calibrator
@@ -163,12 +179,17 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
             proba = model.predict_proba(X)
             base_preds[:, idx] = proba[:, 1]
 
-        # Meta-learner combines predictions + passthrough features
-        meta_input = base_preds
+        # Meta-learner combines predictions + passthrough features + disagreement
+        base_pred_columns = [name for name, _ in self.final_base_models_]
+        meta_df = pd.DataFrame(base_preds, columns=base_pred_columns)
+        meta_df['base_disagreement'] = meta_df[base_pred_columns].std(axis=1)
+
         pt_cols = getattr(self, "_pt_cols", [])
         if pt_cols and isinstance(X, pd.DataFrame):
-            pt_data = X[pt_cols].fillna(0).values
-            meta_input = np.hstack([base_preds, pt_data])
+            pt_data = X[pt_cols].fillna(0).reset_index(drop=True)
+            meta_df = pd.concat([meta_df, pt_data], axis=1)
+
+        meta_input = meta_df.values
         meta_proba = self.meta_learner.predict_proba(meta_input)[:, 1]
 
         # Calibrate
