@@ -31,6 +31,7 @@ class EloParams:
     surface_weight: float = 0.6        # 60% surface Elo, 40% overall
     surface_k_multiplier: float = 1.2   # Higher K for surface (less data)
     serve_k_multiplier: float = 0.8     # Dampened K for serve/return Elo
+    recent_k_multiplier: float = 2.0    # Higher K for recent Elo (responds faster to form)
     use_margin_weighting: bool = False   # FiveThirtyEight found margin-of-victory hurts accuracy
     bo5_multiplier: float = 1.10
     logistic_scale: float = 400.0       # Standard Elo scale

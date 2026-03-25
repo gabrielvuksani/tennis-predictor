@@ -45,6 +45,12 @@ class TemporalState:
     elo_serve: dict[str, float] = field(default_factory=dict)
     elo_return: dict[str, float] = field(default_factory=dict)
 
+    # Recent Elo (form-weighted, higher K-factor): player_id -> rating
+    elo_recent: dict[str, float] = field(default_factory=dict)
+
+    # Recent surface-specific Elo (higher K-factor, surface-filtered): (player_id, surface) -> rating
+    elo_recent_surface: dict[tuple[str, str], float] = field(default_factory=dict)
+
     # Glicko-2 state: player_id -> (rating, rd, volatility)
     glicko2: dict[str, tuple[float, float, float]] = field(default_factory=dict)
 
@@ -338,6 +344,14 @@ class TemporalGuard:
         ret_elo1 = self.state.elo_return.get(p1, init)
         ret_elo2 = self.state.elo_return.get(p2, init)
 
+        # Recent Elo (form-weighted, higher K)
+        recent_elo1 = self.state.elo_recent.get(p1, init)
+        recent_elo2 = self.state.elo_recent.get(p2, init)
+
+        # Recent surface-specific Elo
+        recent_surf_elo1 = self.state.elo_recent_surface.get((p1, surface), init)
+        recent_surf_elo2 = self.state.elo_recent_surface.get((p2, surface), init)
+
         return {
             "elo_diff": elo1 - elo2,
             "elo_p1": elo1,
@@ -350,6 +364,14 @@ class TemporalGuard:
             # Elo win probability (logistic)
             "elo_win_prob": 1.0 / (1.0 + 10 ** ((elo2 - elo1) / 400)),
             "surface_elo_win_prob": 1.0 / (1.0 + 10 ** ((surf_elo2 - surf_elo1) / 400)),
+            # Recent Elo (form-weighted)
+            "elo_recent_p1": recent_elo1,
+            "elo_recent_p2": recent_elo2,
+            "elo_recent_diff": recent_elo1 - recent_elo2,
+            # Recent surface-specific Elo
+            "elo_recent_surface_p1": recent_surf_elo1,
+            "elo_recent_surface_p2": recent_surf_elo2,
+            "elo_recent_surface_diff": recent_surf_elo1 - recent_surf_elo2,
             # Match experience
             "p1_match_count": self.state.match_counts.get(p1, 0),
             "p2_match_count": self.state.match_counts.get(p2, 0),
@@ -700,6 +722,25 @@ class TemporalGuard:
         expected_ret = 1.0 / (1.0 + 10 ** ((ret_l - ret_w) / 400))
         self.state.elo_return[winner_id] = ret_w + k_w * _HP.elo.serve_k_multiplier * (actual_return_w - expected_ret)
         self.state.elo_return[loser_id] = ret_l + k_l * _HP.elo.serve_k_multiplier * (actual_return_l - (1 - expected_ret))
+
+        # Recent Elo — higher K-factor to respond faster to current form
+        recent_k_mult = _HP.elo.recent_k_multiplier
+        rec_w = self.state.elo_recent.get(winner_id, init)
+        rec_l = self.state.elo_recent.get(loser_id, init)
+        expected_rec = 1.0 / (1.0 + 10 ** ((rec_l - rec_w) / scale))
+        self.state.elo_recent[winner_id] = rec_w + k_w * recent_k_mult * (actual_score - expected_rec)
+        self.state.elo_recent[loser_id] = rec_l + k_l * recent_k_mult * ((1 - actual_score) - (1 - expected_rec))
+
+        # Recent surface-specific Elo — higher K-factor, surface-filtered
+        rec_surf_w = self.state.elo_recent_surface.get((winner_id, surface), init)
+        rec_surf_l = self.state.elo_recent_surface.get((loser_id, surface), init)
+        expected_rec_surf = 1.0 / (1.0 + 10 ** ((rec_surf_l - rec_surf_w) / scale))
+        self.state.elo_recent_surface[(winner_id, surface)] = (
+            rec_surf_w + k_w * recent_k_mult * (actual_score - expected_rec_surf)
+        )
+        self.state.elo_recent_surface[(loser_id, surface)] = (
+            rec_surf_l + k_l * recent_k_mult * ((1 - actual_score) - (1 - expected_rec_surf))
+        )
 
     def _update_glicko2(
         self, winner_id: str, loser_id: str, match_date: pd.Timestamp

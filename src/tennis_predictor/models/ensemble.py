@@ -19,6 +19,7 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
+from lightgbm import LGBMClassifier
 
 from tennis_predictor.models.gbm import (
     CatBoostPredictor,
@@ -32,10 +33,16 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
 
     Architecture:
     1. Base models (XGBoost, LightGBM, CatBoost) produce probability predictions
-    2. Meta-learner (Logistic Regression) combines base predictions
+    2. Meta-learner combines base predictions (LightGBM or Logistic Regression)
     3. Isotonic regression calibrates final probabilities
 
     The meta-learner is trained on out-of-fold predictions to avoid overfitting.
+
+    When ``meta_learner_type='lgbm'`` (default), a LightGBM classifier is used
+    so the meta-learner can capture nonlinear interactions between base model
+    predictions and passthrough context features (e.g. "trust XGBoost more on
+    clay").  When ``meta_learner_type='logistic'``, the original Logistic
+    Regression meta-learner is used instead.
     """
 
     # Key features to pass through to meta-learner for context-aware stacking
@@ -57,6 +64,7 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
         self,
         base_models: list[tuple[str, BaseEstimator]] | None = None,
         meta_learner: BaseEstimator | None = None,
+        meta_learner_type: str = "lgbm",
         n_folds: int = 5,
         calibrate: bool = True,
         passthrough: bool = True,
@@ -66,9 +74,26 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
             ("lightgbm", LightGBMPredictor()),
             ("catboost", CatBoostPredictor()),
         ]
-        self.meta_learner = meta_learner or LogisticRegression(
-            C=1.0, max_iter=5000, solver="lbfgs"
-        )
+        self.meta_learner_type = meta_learner_type
+        if meta_learner is not None:
+            # Explicit meta_learner takes precedence
+            self.meta_learner = meta_learner
+        elif meta_learner_type == "lgbm":
+            self.meta_learner = LGBMClassifier(
+                n_estimators=100,
+                max_depth=3,
+                learning_rate=0.05,
+                reg_lambda=1.0,
+                subsample=0.7,
+                colsample_bytree=0.7,
+                min_child_samples=50,
+                verbose=-1,
+            )
+        else:
+            # 'logistic' or any other value falls back to LogisticRegression
+            self.meta_learner = LogisticRegression(
+                C=1.0, max_iter=5000, solver="lbfgs"
+            )
         self.passthrough = passthrough
         self.n_folds = n_folds
         self.calibrate = calibrate
@@ -205,11 +230,26 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
 
     @property
     def base_model_weights(self) -> dict[str, float]:
-        """Meta-learner weights for each base model."""
+        """Meta-learner weights for each base model.
+
+        For Logistic Regression, returns the linear coefficients.
+        For LightGBM, returns feature importances for base model columns
+        (normalized to sum to 1), which approximate how much each base
+        model contributes to the final prediction.
+        """
         if hasattr(self.meta_learner, "coef_"):
             weights = self.meta_learner.coef_[0]
             return {name: float(w) for (name, _), w
                     in zip(self.base_models, weights)}
+        if hasattr(self.meta_learner, "feature_importances_"):
+            importances = self.meta_learner.feature_importances_
+            n_base = len(self.base_models)
+            base_importances = importances[:n_base]
+            total = base_importances.sum()
+            if total > 0:
+                base_importances = base_importances / total
+            return {name: float(w) for (name, _), w
+                    in zip(self.base_models, base_importances)}
         return {}
 
 
@@ -249,12 +289,18 @@ class CalibratedModel(BaseEstimator, ClassifierMixin):
 
 
 def create_default_ensemble(**kwargs) -> StackingEnsemble:
-    """Create the default stacking ensemble with tuned hyperparameters."""
+    """Create the default stacking ensemble with tuned hyperparameters.
+
+    Uses a LightGBM meta-learner by default to capture nonlinear interactions
+    between base model predictions and passthrough context features.
+    Pass ``meta_learner_type='logistic'`` to revert to LogisticRegression.
+    """
     return StackingEnsemble(
         base_models=[
             ("xgboost", XGBoostPredictor(**kwargs.get("xgboost", {}))),
             ("lightgbm", LightGBMPredictor(**kwargs.get("lightgbm", {}))),
             ("catboost", CatBoostPredictor(**kwargs.get("catboost", {}))),
         ],
+        meta_learner_type=kwargs.get("meta_learner_type", "lgbm"),
         calibrate=True,
     )
