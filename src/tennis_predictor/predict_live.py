@@ -523,12 +523,21 @@ def _predict_with_ensemble(
         # Build DataFrame and align columns to model's expected order
         feature_df = pd.DataFrame([features])
 
-        # Get expected feature names from the first base model
+        # Try to load selected features from pipeline (Change 5: feature selection)
+        selected_features_path = PROCESSED_DIR / "selected_features.json"
         expected_cols = None
-        if hasattr(model, "final_base_models_") and model.final_base_models_:
-            base_model = model.final_base_models_[0][1]
-            if hasattr(base_model, "feature_names_"):
-                expected_cols = base_model.feature_names_
+        if selected_features_path.exists():
+            try:
+                expected_cols = json.loads(selected_features_path.read_text())
+            except Exception:
+                pass
+
+        # Fallback: get expected features from the first base model
+        if expected_cols is None:
+            if hasattr(model, "final_base_models_") and model.final_base_models_:
+                base_model = model.final_base_models_[0][1]
+                if hasattr(base_model, "feature_names_"):
+                    expected_cols = base_model.feature_names_
 
         if expected_cols is not None:
             for col in expected_cols:

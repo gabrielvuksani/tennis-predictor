@@ -617,9 +617,10 @@ class TemporalGuard:
         k_l *= level_mult * bo5_mult
 
         # Margin-weighted Elo (WElo): use set proportion instead of binary 1/0
-        # A 6-0 6-0 win gives score ~1.0, a 7-6 6-7 7-6 gives ~0.6
+        # FiveThirtyEight found margin-of-victory leads to WORSE predictions
+        # Default: pure binary (winner=1, loser=0); configurable via HP.elo.use_margin_weighting
         actual_score = 1.0  # Default: binary win
-        if match is not None:
+        if HP.elo.use_margin_weighting and match is not None:
             n_sets = match.get("n_sets", np.nan)
             if _valid(n_sets) and n_sets > 0:
                 # Winner won ceil(best_of/2) sets, loser won (n_sets - ceil(best_of/2))

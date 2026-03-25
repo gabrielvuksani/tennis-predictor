@@ -24,12 +24,14 @@ from typing import Any
 @dataclass
 class EloParams:
     initial_rating: float = 1500.0
+    # FiveThirtyEight optimal Elo params: K=250, offset=5, shape=0.4
     k_factor_base: float = 250.0
     k_factor_exponent: float = 0.4
     k_factor_offset: int = 5
     surface_weight: float = 0.6        # 60% surface Elo, 40% overall
     surface_k_multiplier: float = 1.2   # Higher K for surface (less data)
     serve_k_multiplier: float = 0.8     # Dampened K for serve/return Elo
+    use_margin_weighting: bool = False   # FiveThirtyEight found margin-of-victory hurts accuracy
     bo5_multiplier: float = 1.10
     logistic_scale: float = 400.0       # Standard Elo scale
     # Tournament level multipliers
@@ -150,6 +152,9 @@ class PipelineParams:
     intransitivity_lookback_days: int = 730
     min_common_opponents: int = 2
     time_decay_gamma: float = 0.9997
+    nan_rate_threshold: float = 0.60         # Drop features with NaN rate above this
+    feature_selection_top_n: int = 60        # Keep top N features by importance
+    feature_selection_min_cols: int = 80     # Only run selection if > this many columns
     odds_date_window: int = 16
     odds_rank_tolerance: int = 1
 

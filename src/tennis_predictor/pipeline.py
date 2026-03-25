@@ -172,6 +172,17 @@ def run_full_pipeline(
     print(f"Feature matrix: {X.shape}")
     print(f"Target balance: {y.mean():.4f}")
 
+    # === STEP 7b: Drop high-NaN features ===
+    nan_threshold = HP.pipeline.nan_rate_threshold
+    nan_rates = X.isna().mean()
+    high_nan_cols = nan_rates[nan_rates > nan_threshold].index.tolist()
+    if high_nan_cols:
+        print(f"\nDropping {len(high_nan_cols)} features with NaN rate > {nan_threshold:.0%}:")
+        for col in sorted(high_nan_cols):
+            print(f"  {col:<40s} NaN rate: {nan_rates[col]:.1%}")
+        X = X.drop(columns=high_nan_cols)
+        print(f"Feature matrix after NaN filtering: {X.shape}")
+
     # === STEP 8: Train and evaluate ===
     print("\n" + "=" * 60)
     print("STEP 8: Training and evaluating models")
@@ -412,6 +423,30 @@ def _train_and_evaluate(
     non_ret = ~retirement_mask
     X_train = X_train_raw[non_ret]
     y_train = y_train_raw[non_ret]
+
+    # === Feature selection: reduce noise from 280+ feature matrix ===
+    min_cols = HP.pipeline.feature_selection_min_cols
+    top_n = HP.pipeline.feature_selection_top_n
+    selected_features_path = PROCESSED_DIR / "selected_features.json"
+
+    if X_train.shape[1] > min_cols:
+        from tennis_predictor.features.selection import auto_select_features
+        selected_names, importances = auto_select_features(X_train, y_train, top_n=top_n)
+
+        # Filter train and test to selected features only
+        X_train = X_train[selected_names]
+        X_test = X_test[selected_names]
+        print(f"Feature selection: {X.shape[1]} -> {len(selected_names)} features")
+
+        # Save selected features for live predictions
+        with open(selected_features_path, "w") as f:
+            json.dump(selected_names, f, indent=2)
+        print(f"Selected features saved to {selected_features_path}")
+    else:
+        print(f"Feature selection skipped ({X_train.shape[1]} <= {min_cols} columns)")
+        # Save all feature names so live predictions stay consistent
+        with open(selected_features_path, "w") as f:
+            json.dump(list(X_train.columns), f, indent=2)
 
     # Time-decay sample weighting: recent matches matter more
     train_dates = train_pairwise_all.loc[non_ret, "tourney_date"]
