@@ -1,7 +1,7 @@
 """Definitive odds merge — combines multiple matching strategies.
 
-Strategy 1: Exact last-name + initial match + date window (highest precision)
-Strategy 2: Last-name-only + surface + date window (medium precision)
+Strategy 1: Last-name last-word + date window (highest precision)
+Strategy 2: Substring containment + surface + date window (medium precision)
 Strategy 3: Rank proximity + surface + date window (fallback)
 
 This replaces the broken _merge_odds() in pipeline.py.
@@ -50,11 +50,11 @@ def merge_odds_with_matches(matches: pd.DataFrame) -> pd.DataFrame:
     # Pre-compute odds-side date ordinal for vectorized date-window checks
     odds_df["_date_ord"] = odds_df["_date"].values.astype("datetime64[D]").astype(np.int64)
 
-    # Strategy 1: Last name + initial matching (most precise)
+    # Strategy 1: Last-word name matching (most precise)
     matched_1 = _match_by_name(matches, odds_df)
-    print(f"Odds merge pass 1 (name+initial): {matched_1:,} matched")
+    print(f"Odds merge pass 1 (name+date): {matched_1:,} matched")
 
-    # Strategy 2: Last name only + surface (medium precision)
+    # Strategy 2: Substring containment + surface (medium precision)
     matched_2 = _match_by_lastname(matches, odds_df)
     print(f"Odds merge pass 2 (lastname+surface): {matched_2:,} matched")
 
@@ -71,10 +71,31 @@ def merge_odds_with_matches(matches: pd.DataFrame) -> pd.DataFrame:
     return matches
 
 
+def _parse_date_flexible(series: pd.Series) -> pd.Series:
+    """Parse date series handling both ISO (YYYY-MM-DD) and European (DD/MM/YYYY) formats.
+
+    Cached CSV files from tennis-data.co.uk store dates as YYYY-MM-DD (ISO) after
+    the pd.read_csv -> to_csv round-trip, while the original files may use DD/MM/YYYY.
+    Using dayfirst=True on ISO dates silently swaps month/day (e.g. 2010-01-04 becomes
+    April 1st) and produces NaT for days 13-31. We try ISO first, then fall back to
+    dayfirst=True for any remaining unparsed values.
+    """
+    # Try ISO format first (handles YYYY-MM-DD from cached CSVs)
+    parsed = pd.to_datetime(series, errors="coerce")
+    # For any remaining NaT values, try dayfirst=True (handles DD/MM/YYYY originals)
+    still_nat = parsed.isna() & series.notna()
+    if still_nat.any():
+        fallback = pd.to_datetime(series[still_nat], dayfirst=True, errors="coerce")
+        parsed.loc[still_nat] = fallback
+    return parsed
+
+
 def _prepare_odds(odds_df: pd.DataFrame) -> pd.DataFrame:
     """Parse and compute odds fields."""
     if "Date" in odds_df.columns:
-        odds_df["_date"] = pd.to_datetime(odds_df["Date"], dayfirst=True, errors="coerce")
+        odds_df["_date"] = _parse_date_flexible(odds_df["Date"])
+    elif "match_date" in odds_df.columns:
+        odds_df["_date"] = _parse_date_flexible(odds_df["match_date"])
     else:
         odds_df["_date"] = pd.NaT
 
@@ -99,8 +120,14 @@ def _prepare_odds(odds_df: pd.DataFrame) -> pd.DataFrame:
         odds_df["_ol"] = pd.to_numeric(odds_df["odds_avg_l"], errors="coerce")
 
     # Fallback: compute from raw columns if not pre-computed
+    # Priority order: Pinnacle (sharpest), B365, AvgW, then older bookmakers
+    # CBW/GBW/IWW/SBW are from early 2000s tennis-data.co.uk files
     if odds_df["_ip_w"].isna().all():
-        for wc, lc in [("PSW", "PSL"), ("B365W", "B365L"), ("AvgW", "AvgL")]:
+        bookmakers = [
+            ("PSW", "PSL"), ("B365W", "B365L"), ("AvgW", "AvgL"),
+            ("CBW", "CBL"), ("GBW", "GBL"), ("IWW", "IWL"), ("SBW", "SBL"),
+        ]
+        for wc, lc in bookmakers:
             if wc in odds_df.columns:
                 ow = pd.to_numeric(odds_df[wc], errors="coerce")
                 ol = pd.to_numeric(odds_df[lc], errors="coerce")
@@ -113,8 +140,11 @@ def _prepare_odds(odds_df: pd.DataFrame) -> pd.DataFrame:
 
     # Parse names and ranks
     if "Winner" in odds_df.columns:
-        odds_df["_w_last"] = odds_df["Winner"].map(_extract_lastname)
-        odds_df["_l_last"] = odds_df["Loser"].map(_extract_lastname)
+        odds_df["_w_last"] = odds_df["Winner"].map(_extract_last_word)
+        odds_df["_l_last"] = odds_df["Loser"].map(_extract_last_word)
+        # Also keep full extracted last name for substring matching in Strategy 2
+        odds_df["_w_last_full"] = odds_df["Winner"].map(_extract_lastname)
+        odds_df["_l_last_full"] = odds_df["Loser"].map(_extract_lastname)
     if "WRank" in odds_df.columns:
         odds_df["_wr"] = pd.to_numeric(odds_df["WRank"], errors="coerce")
         odds_df["_lr"] = pd.to_numeric(odds_df["LRank"], errors="coerce")
@@ -125,22 +155,54 @@ def _prepare_odds(odds_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _extract_lastname(name: str) -> str:
-    """Extract last name from any format."""
+    """Extract full last name from tennis-data.co.uk format.
+
+    Handles formats like:
+        "Federer R."     -> "federer"
+        "Del Potro J.M." -> "del potro"   (multi-initial)
+        "Tsonga J.W."    -> "tsonga"      (multi-initial)
+        "De Bakker T."   -> "de bakker"   (multi-word)
+        "Garcia-Lopez G." -> "garcia-lopez" (hyphenated)
+    """
     if pd.isna(name) or not name:
         return ""
     name = str(name).strip().lower()
-    # "Last F." format -> just take first word(s) before the initial
     parts = name.split()
-    if parts and parts[-1].endswith(".") and len(parts[-1]) <= 3:
-        return " ".join(parts[:-1])
-    # "First Last" -> take last word
-    if len(parts) >= 2:
-        return parts[-1]
-    return name
+    if len(parts) <= 1:
+        return name
+    # Work backwards: strip trailing parts that are initials (contain a dot,
+    # and after removing dots are 1-2 alphabetic characters).
+    i = len(parts) - 1
+    while i > 0:
+        stripped = parts[i].replace(".", "")
+        if "." in parts[i] and len(stripped) <= 2 and stripped.isalpha():
+            i -= 1
+        else:
+            break
+    return " ".join(parts[: i + 1])
+
+
+def _extract_last_word(name: str) -> str:
+    """Extract the final word of the last name for merge-key matching.
+
+    This normalizes multi-word names so both data sources produce the same key:
+        Odds "Del Potro J.M." -> "potro"
+        Sackmann "Juan Martin del Potro" -> "potro"  (via _sackmann_lastname)
+    """
+    full = _extract_lastname(name)
+    if not full:
+        return ""
+    parts = full.split()
+    return parts[-1] if parts else full
 
 
 def _sackmann_lastname(name) -> str:
-    """Extract last name from Sackmann 'First Last' format."""
+    """Extract last name from Sackmann 'First Last' format.
+
+    Takes the final word, which matches _extract_last_word for odds data:
+        "Roger Federer" -> "federer"
+        "Juan Martin del Potro" -> "potro"
+    """
     if pd.isna(name) or not name:
         return ""
     parts = str(name).strip().lower().split()
@@ -160,9 +222,15 @@ def _assign_odds_vectorized(
 
 
 def _match_by_name(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
-    """Strategy 1: Match by last name + date window (vectorized).
+    """Strategy 1: Match by last-name last-word + date window (vectorized).
+
+    Both sides extract the final word of the last name so multi-word names match:
+        Sackmann "Juan Martin del Potro" -> "potro"
+        Odds "Del Potro J.M." -> "potro"
 
     Uses pd.merge on (w_last, l_last) then filters by date window [-1, +16] days.
+    tourney_date is the tournament start; actual matches run up to +13 days later
+    (Grand Slams are 2 weeks), so [-1, +16] covers all cases.
     First match (closest odds date) wins for each match row.
     """
     if "_w_last" not in odds_df.columns:
@@ -177,7 +245,7 @@ def _match_by_name(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
     if len(m_sub) == 0:
         return 0
 
-    # Merge on exact (w_last, l_last), preserving original indices for assignment
+    # Merge on exact last-word match for both winner and loser
     m_sub_keyed = m_sub[["_m_w_last", "_m_l_last", "_m_date_ord"]].copy()
     m_sub_keyed["_midx"] = m_sub_keyed.index
 
@@ -205,11 +273,14 @@ def _match_by_name(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
 def _match_by_lastname(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
     """Strategy 2: Last name substring + surface + date window (vectorized).
 
-    The original strategy checked `w_last in odds_w_last` (substring containment).
-    To replicate this vectorized: we merge on surface + date bucket to limit the
-    cross-product size, filter by exact date window, then check substring containment.
+    Catches cases Strategy 1 misses (e.g. different last-word due to naming
+    conventions). Uses the full extracted last name from odds and checks if the
+    Sackmann last word is contained within it, plus surface and date constraints.
+
+    Merge on surface + date bucket to limit cross-product size, filter by exact
+    date window, then check substring containment.
     """
-    if "_surf" not in odds_df.columns:
+    if "_surf" not in odds_df.columns or "_w_last_full" not in odds_df.columns:
         return 0
 
     unmatched_mask = matches["odds_implied_w"].isna()
@@ -221,7 +292,7 @@ def _match_by_lastname(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
         return 0
 
     # Use 21-day date buckets to limit cross-product size.
-    # A match with date D can match odds in [D, D+16], so we need to join
+    # A match with date D can match odds in [D-1, D+16], so we need to join
     # across at most 2 adjacent buckets. We do this by duplicating matches
     # into their bucket and the next bucket.
     bucket_days = 21
@@ -236,7 +307,7 @@ def _match_by_lastname(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
     m_keyed2["_bucket"] = m_keyed2["_bucket"] + 1
     m_keyed_all = pd.concat([m_keyed, m_keyed2], ignore_index=True)
 
-    o_keyed = odds_df[["_w_last", "_l_last", "_surf", "_date_ord", "_ip_w", "_ip_l", "_ow", "_ol"]].copy()
+    o_keyed = odds_df[["_w_last_full", "_l_last_full", "_surf", "_date_ord", "_ip_w", "_ip_l", "_ow", "_ol"]].copy()
     o_keyed.rename(columns={"_surf": "_m_surf"}, inplace=True)
     o_keyed["_oidx"] = o_keyed.index
     o_keyed["_bucket"] = o_keyed["_date_ord"] // bucket_days
@@ -246,20 +317,21 @@ def _match_by_lastname(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
     if len(merged) == 0:
         return 0
 
-    # Date window [0, +16] days (original used range(0, 17))
+    # Date window [-1, +16] days
     diff = merged["_date_ord"] - merged["_m_date_ord"]
-    merged = merged.loc[(diff >= 0) & (diff <= 16)].copy()
+    merged = merged.loc[(diff >= -1) & (diff <= 16)].copy()
     if len(merged) == 0:
         return 0
 
-    # Substring containment: match_w_last in odds_w_last AND match_l_last in odds_l_last
+    # Substring containment: match_w_last in odds_w_last_full AND same for loser
+    # This handles multi-word names: "potro" in "del potro" = True
     w_contains = np.array([
         mw in ow
-        for mw, ow in zip(merged["_m_w_last"].values, merged["_w_last"].values)
+        for mw, ow in zip(merged["_m_w_last"].values, merged["_w_last_full"].values)
     ])
     l_contains = np.array([
         ml in ol
-        for ml, ol in zip(merged["_m_l_last"].values, merged["_l_last"].values)
+        for ml, ol in zip(merged["_m_l_last"].values, merged["_l_last_full"].values)
     ])
     merged = merged.loc[w_contains & l_contains].copy()
     if len(merged) == 0:
@@ -321,9 +393,9 @@ def _match_by_rank(matches: pd.DataFrame, odds_df: pd.DataFrame, tolerance: int 
     if len(merged) == 0:
         return 0
 
-    # Date window [0, +16]
+    # Date window [-1, +16]
     diff = merged["_date_ord"] - merged["_m_date_ord"]
-    date_ok = (diff >= 0) & (diff <= 16)
+    date_ok = (diff >= -1) & (diff <= 16)
 
     # Rank proximity
     wr_ok = (merged["_wr"] - merged["_m_wr"]).abs() <= tolerance

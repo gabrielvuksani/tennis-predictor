@@ -135,11 +135,17 @@ def download_tennis_data_odds(
 
 def _clean_odds(odds: pd.DataFrame) -> pd.DataFrame:
     """Clean and standardize odds data."""
-    # Parse date
-    if "Date" in odds.columns:
-        odds["match_date"] = pd.to_datetime(odds["Date"], dayfirst=True, errors="coerce")
-    elif "date" in odds.columns:
-        odds["match_date"] = pd.to_datetime(odds["date"], dayfirst=True, errors="coerce")
+    # Parse date — cached CSV files have ISO format (YYYY-MM-DD) from the
+    # pd.read_csv -> to_csv round-trip. Try ISO first, then dayfirst for any
+    # remaining unparsed values (handles original DD/MM/YYYY from tennis-data.co.uk).
+    date_col = "Date" if "Date" in odds.columns else ("date" if "date" in odds.columns else None)
+    if date_col is not None:
+        odds["match_date"] = pd.to_datetime(odds[date_col], errors="coerce")
+        still_nat = odds["match_date"].isna() & odds[date_col].notna()
+        if still_nat.any():
+            odds.loc[still_nat, "match_date"] = pd.to_datetime(
+                odds.loc[still_nat, date_col], dayfirst=True, errors="coerce"
+            )
     else:
         odds["match_date"] = pd.NaT
 
