@@ -9,3 +9,8 @@ __pycache__/
 *.egg-info/
 *.pkl
 catboost_info/
+
+# Claude Code / AI
+.claude/
+.superpowers/
+.claude.local.md
