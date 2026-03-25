@@ -189,12 +189,12 @@ def _match_by_name(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
     if len(merged) == 0:
         return 0
 
-    diff = merged["_date_ord_y"] - merged["_date_ord_x"]
+    diff = merged["_date_ord"] - merged["_m_date_ord"]
     merged = merged.loc[(diff >= -1) & (diff <= 16)].copy()
     if len(merged) == 0:
         return 0
 
-    merged["_abs_diff"] = (merged["_date_ord_y"] - merged["_date_ord_x"]).abs()
+    merged["_abs_diff"] = (merged["_date_ord"] - merged["_m_date_ord"]).abs()
     merged.sort_values("_abs_diff", inplace=True)
     best = merged.drop_duplicates(subset=["_midx"], keep="first")
 
@@ -247,7 +247,7 @@ def _match_by_lastname(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
         return 0
 
     # Date window [0, +16] days (original used range(0, 17))
-    diff = merged["_date_ord_y"] - merged["_date_ord_x"]
+    diff = merged["_date_ord"] - merged["_m_date_ord"]
     merged = merged.loc[(diff >= 0) & (diff <= 16)].copy()
     if len(merged) == 0:
         return 0
@@ -266,7 +266,7 @@ def _match_by_lastname(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
         return 0
 
     # Pick closest date match per match row
-    merged["_abs_diff"] = (merged["_date_ord_y"] - merged["_date_ord_x"]).abs()
+    merged["_abs_diff"] = (merged["_date_ord"] - merged["_m_date_ord"]).abs()
     merged.sort_values("_abs_diff", inplace=True)
     best = merged.drop_duplicates(subset=["_midx"], keep="first")
 
@@ -322,7 +322,7 @@ def _match_by_rank(matches: pd.DataFrame, odds_df: pd.DataFrame, tolerance: int 
         return 0
 
     # Date window [0, +16]
-    diff = merged["_date_ord_y"] - merged["_date_ord_x"]
+    diff = merged["_date_ord"] - merged["_m_date_ord"]
     date_ok = (diff >= 0) & (diff <= 16)
 
     # Rank proximity
@@ -334,7 +334,7 @@ def _match_by_rank(matches: pd.DataFrame, odds_df: pd.DataFrame, tolerance: int 
         return 0
 
     # Pick closest date per match
-    merged["_abs_diff"] = (merged["_date_ord_y"] - merged["_date_ord_x"]).abs()
+    merged["_abs_diff"] = (merged["_date_ord"] - merged["_m_date_ord"]).abs()
     merged.sort_values("_abs_diff", inplace=True)
     best = merged.drop_duplicates(subset=["_midx"], keep="first")
 
