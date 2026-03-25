@@ -2,7 +2,7 @@
 let DATA=null;
 const S={view:'list',tab:'predictions',sel:null,filters:{conf:'all',surface:'all'},mobile:false};
 const $=id=>document.getElementById(id);
-const esc=s=>s?String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;'):'';
+const esc=s=>s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):'';
 const pct=v=>v!=null&&!isNaN(v)?Math.round(v*100)+'%':null;
 
 /* === MOBILE DETECTION === */
@@ -20,6 +20,7 @@ async function init(){
   showSkeleton();
   try{
     const r=await fetch('predictions.json');
+    if(!r.ok)throw new Error('HTTP '+r.status);
     DATA=await r.json();
     render();
     if(!S.mobile&&DATA.predictions?.length&&!S.sel){
@@ -77,7 +78,7 @@ function setTheme(t){
 }
 if(themeBtn)themeBtn.addEventListener('click',()=>
   setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'));
-setTheme(localStorage.getItem('theme')||'dark');
+setTheme(localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'));
 
 /* === RENDER === */
 function render(){
@@ -506,7 +507,7 @@ document.addEventListener('touchmove',e=>{
 },{passive:true});
 document.addEventListener('touchend',e=>{
   if(!swiping)return;swiping=false;
-  const dx=e.changedTouches[0].clientX-txS;const dt=Date.now()-ttS;const vel=Math.abs(dx)/dt;
+  const dx=e.changedTouches[0].clientX-txS;const dt=Date.now()-ttS;const vel=dx>0?dx/dt:0;
   const md=$('mobile-detail');const ml=$('mobile-list');
   if(md)md.style.transition='';if(ml)ml.style.transition='';
   if(dx>80||vel>0.5){hideMobileDetail();history.back()}
@@ -550,6 +551,7 @@ function closeModal(){
   const o=$('player-modal');if(o)o.classList.remove('open');document.body.style.overflow='';
 }
 $('player-modal')?.addEventListener('click',e=>{if(e.target.id==='player-modal')closeModal()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
 
 /* Modal swipe-down dismiss */
 let modalTouchY=0,modalSwiping=false;
