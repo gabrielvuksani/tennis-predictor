@@ -86,7 +86,7 @@ def load_court_speed_history(start_year: int = 2010, end_year: int = 2026) -> pd
     Returns a DataFrame with tournament, surface, year, and speed_rating.
     """
     frames = []
-    for year in range(start_year, end_year + 1):
+    for year in range(int(start_year), int(end_year) + 1):
         df = scrape_tennis_abstract_speed(year)
         if df is not None and len(df) > 0:
             frames.append(df)

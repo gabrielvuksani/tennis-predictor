@@ -86,7 +86,7 @@ def download_tennis_data_odds(
     ODDS_DIR.mkdir(parents=True, exist_ok=True)
     frames = []
 
-    for year in tqdm(range(start_year, end_year + 1), desc="Downloading odds data"):
+    for year in tqdm(range(int(start_year), int(end_year) + 1), desc="Downloading odds data"):
         cache_path = ODDS_DIR / f"tennis_data_{year}.csv"
 
         # Use cache if available
