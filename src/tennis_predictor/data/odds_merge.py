@@ -20,8 +20,8 @@ def merge_odds_with_matches(matches: pd.DataFrame) -> pd.DataFrame:
 
     Returns matches DataFrame with added odds columns.
     """
-    min_year = matches["tourney_date"].dt.year.min()
-    max_year = matches["tourney_date"].dt.year.max()
+    min_year = int(matches["tourney_date"].dt.year.min())
+    max_year = int(matches["tourney_date"].dt.year.max())
     odds_start = max(min_year, 2001)
 
     odds_df = download_tennis_data_odds(start_year=odds_start, end_year=max_year)
