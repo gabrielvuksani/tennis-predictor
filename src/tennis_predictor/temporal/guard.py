@@ -644,24 +644,27 @@ class TemporalGuard:
         self.state.elo_surface[(winner_id, surface)] = surf_w + surf_k_w * (actual_score - expected_surf)
         self.state.elo_surface[(loser_id, surface)] = surf_l + surf_k_l * ((1 - actual_score) - (1 - expected_surf))
 
-        # Serve Elo — use actual serve performance when stats are available
-        # Winner serve: (w_1stWon + w_2ndWon) / w_svpt
-        # Loser serve:  (l_1stWon + l_2ndWon) / l_svpt
+        # Serve Elo — use relative serve performance comparison
+        # Compare winner's serve% vs loser's serve% within this match
+        # Player who served better gets the higher "actual" score
         actual_serve_w = actual_score  # fallback: match outcome
         actual_serve_l = 1 - actual_score
         if match is not None:
             w_1stWon = match.get("w_1stWon", np.nan)
             w_2ndWon = match.get("w_2ndWon", np.nan)
             w_svpt = match.get("w_svpt", np.nan)
-            if _valid(w_1stWon) and _valid(w_2ndWon) and _valid(w_svpt) and w_svpt > 0:
-                serve_pct_w = (w_1stWon + w_2ndWon) / w_svpt
-                actual_serve_w = max(0.0, min(1.0, (serve_pct_w - 0.5) * 2))
             l_1stWon = match.get("l_1stWon", np.nan)
             l_2ndWon = match.get("l_2ndWon", np.nan)
             l_svpt = match.get("l_svpt", np.nan)
-            if _valid(l_1stWon) and _valid(l_2ndWon) and _valid(l_svpt) and l_svpt > 0:
+            if (_valid(w_1stWon) and _valid(w_2ndWon) and _valid(w_svpt) and w_svpt > 0 and
+                _valid(l_1stWon) and _valid(l_2ndWon) and _valid(l_svpt) and l_svpt > 0):
+                serve_pct_w = (w_1stWon + w_2ndWon) / w_svpt
                 serve_pct_l = (l_1stWon + l_2ndWon) / l_svpt
-                actual_serve_l = max(0.0, min(1.0, (serve_pct_l - 0.5) * 2))
+                # Normalize: who served better gets score > 0.5
+                total = serve_pct_w + serve_pct_l
+                if total > 0:
+                    actual_serve_w = serve_pct_w / total
+                    actual_serve_l = serve_pct_l / total
 
         serve_w = self.state.elo_serve.get(winner_id, init)
         serve_l = self.state.elo_serve.get(loser_id, init)
@@ -669,24 +672,27 @@ class TemporalGuard:
         self.state.elo_serve[winner_id] = serve_w + k_w * _HP.elo.serve_k_multiplier * (actual_serve_w - expected_serve)
         self.state.elo_serve[loser_id] = serve_l + k_l * _HP.elo.serve_k_multiplier * (actual_serve_l - (1 - expected_serve))
 
-        # Return Elo — use actual return performance when stats are available
-        # Winner return: (l_svpt - l_1stWon - l_2ndWon) / l_svpt
-        # Loser return:  (w_svpt - w_1stWon - w_2ndWon) / w_svpt
+        # Return Elo — use relative return performance comparison
+        # Compare winner's return% vs loser's return% within this match
         actual_return_w = actual_score  # fallback: match outcome
         actual_return_l = 1 - actual_score
         if match is not None:
             l_svpt_r = match.get("l_svpt", np.nan)
             l_1stWon_r = match.get("l_1stWon", np.nan)
             l_2ndWon_r = match.get("l_2ndWon", np.nan)
-            if _valid(l_svpt_r) and _valid(l_1stWon_r) and _valid(l_2ndWon_r) and l_svpt_r > 0:
-                return_pct_w = (l_svpt_r - l_1stWon_r - l_2ndWon_r) / l_svpt_r
-                actual_return_w = max(0.0, min(1.0, (return_pct_w - 0.5) * 2))
             w_svpt_r = match.get("w_svpt", np.nan)
             w_1stWon_r = match.get("w_1stWon", np.nan)
             w_2ndWon_r = match.get("w_2ndWon", np.nan)
-            if _valid(w_svpt_r) and _valid(w_1stWon_r) and _valid(w_2ndWon_r) and w_svpt_r > 0:
+            if (_valid(l_svpt_r) and _valid(l_1stWon_r) and _valid(l_2ndWon_r) and l_svpt_r > 0 and
+                _valid(w_svpt_r) and _valid(w_1stWon_r) and _valid(w_2ndWon_r) and w_svpt_r > 0):
+                # Winner's return: points won when opponent (loser) was serving
+                return_pct_w = (l_svpt_r - l_1stWon_r - l_2ndWon_r) / l_svpt_r
+                # Loser's return: points won when opponent (winner) was serving
                 return_pct_l = (w_svpt_r - w_1stWon_r - w_2ndWon_r) / w_svpt_r
-                actual_return_l = max(0.0, min(1.0, (return_pct_l - 0.5) * 2))
+                total = return_pct_w + return_pct_l
+                if total > 0:
+                    actual_return_w = return_pct_w / total
+                    actual_return_l = return_pct_l / total
 
         ret_w = self.state.elo_return.get(winner_id, init)
         ret_l = self.state.elo_return.get(loser_id, init)
