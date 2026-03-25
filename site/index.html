@@ -3,7 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tennis Predictor</title>
+<meta name="description" content="AI-powered ATP tennis match predictions with 65.9% accuracy. Bloomberg-style analytical dashboard with real-time Elo ratings, H2H stats, and calibrated probabilities.">
+<meta name="theme-color" content="#050505" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)">
+<meta property="og:title" content="Tennis Predictor PRO">
+<meta property="og:description" content="AI-powered ATP tennis match predictions. 230+ features, zero data leakage, calibration-first.">
+<meta property="og:type" content="website">
+<title>Tennis Predictor PRO</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -11,19 +17,19 @@
 </head>
 <body>
 <!-- Topbar -->
-<nav class="topbar"><div class="tb-in">
+<nav class="topbar" role="navigation" aria-label="Main navigation"><div class="tb-in">
   <div class="brand">
-    <div class="brand-icon">T</div>
+    <div class="brand-icon" aria-hidden="true">T</div>
     <span class="brand-text">Tennis Predictor</span>
     <span class="brand-tag">PRO</span>
   </div>
   <div class="tb-right">
-    <div class="nav" id="top-nav">
-      <button class="nav-btn active" data-tab="predictions">Predictions</button>
-      <button class="nav-btn" data-tab="results">Results</button>
-      <button class="nav-btn" data-tab="analytics">Analytics</button>
+    <div class="nav" id="top-nav" role="tablist" aria-label="Dashboard sections">
+      <button class="nav-btn active" data-tab="predictions" role="tab" aria-selected="true">Predictions</button>
+      <button class="nav-btn" data-tab="results" role="tab" aria-selected="false">Results</button>
+      <button class="nav-btn" data-tab="analytics" role="tab" aria-selected="false">Analytics</button>
     </div>
-    <button class="theme-btn" id="theme-toggle" title="Toggle theme">&#9790;</button>
+    <button class="theme-btn" id="theme-toggle" title="Toggle theme" aria-label="Toggle dark/light theme">&#9790;</button>
   </div>
 </div></nav>
 
@@ -32,12 +38,13 @@
 
 <!-- Desktop/Tablet Layout -->
 <div class="app-layout">
-  <aside class="sidebar" id="sidebar">
-    <div class="filters" id="filters">
+  <aside class="sidebar" id="sidebar" aria-label="Match list">
+    <div class="filters" id="filters" role="toolbar" aria-label="Filter predictions">
       <button class="filter-btn active" data-type="conf" data-val="all">All</button>
       <button class="filter-btn" data-type="conf" data-val="high">High Conf</button>
       <button class="filter-btn" data-type="conf" data-val="medium">Medium</button>
-      <button class="filter-btn" data-type="surface" data-val="all">All Surfaces</button>
+      <span class="filter-sep"></span>
+      <button class="filter-btn active" data-type="surface" data-val="all">All Surfaces</button>
       <button class="filter-btn" data-type="surface" data-val="hard">Hard</button>
       <button class="filter-btn" data-type="surface" data-val="clay">Clay</button>
       <button class="filter-btn" data-type="surface" data-val="grass">Grass</button>
@@ -46,47 +53,50 @@
     <div id="match-list"></div>
   </aside>
   <main class="main-panel">
-    <div id="view-predictions" class="view active">
+    <div id="view-predictions" class="view active" role="tabpanel">
       <div class="detail-topbar" id="detail-topbar"></div>
       <div id="detail-panel"></div>
     </div>
-    <div id="view-results" class="view">
+    <div id="view-results" class="view" role="tabpanel">
       <div id="results-content"></div>
     </div>
-    <div id="view-analytics" class="view">
+    <div id="view-analytics" class="view" role="tabpanel">
       <div class="metrics-grid" id="perf"></div>
       <div class="chart-container" id="chart-wrap">
         <div class="chart-title">Calibration</div>
         <div class="chart-sub">Predicted probability vs actual win rate. Diagonal = perfect.</div>
-        <canvas id="cal"></canvas>
-        <div class="cal-tooltip" id="cal-tooltip"></div>
+        <canvas id="cal" aria-label="Calibration chart"></canvas>
+        <div class="cal-tooltip" id="cal-tooltip" role="tooltip"></div>
       </div>
       <div id="system-info"></div>
     </div>
   </main>
 </div>
 
-<!-- Mobile Containers -->
+<!-- Mobile Containers (predictions + results + analytics all rendered here on mobile) -->
 <div class="mobile-container" id="mobile-container">
   <div class="mobile-list" id="mobile-list"></div>
   <div class="mobile-detail" id="mobile-detail"></div>
+  <div class="mobile-results" id="mobile-results"></div>
+  <div class="mobile-analytics" id="mobile-analytics"></div>
 </div>
 
 <!-- Player Modal -->
-<div class="modal-overlay" id="player-modal">
+<div class="modal-overlay" id="player-modal" role="dialog" aria-modal="true" aria-label="Player profile">
   <div class="modal" id="modal-content"></div>
 </div>
 
 <!-- Bottom Nav (mobile) -->
-<div class="bottom-nav" id="bottom-nav">
-  <button class="bn-btn active" data-tab="predictions">Predictions</button>
-  <button class="bn-btn" data-tab="results">Results</button>
-  <button class="bn-btn" data-tab="analytics">Analytics</button>
+<div class="bottom-nav" id="bottom-nav" role="tablist" aria-label="Dashboard sections">
+  <button class="bn-btn active" data-tab="predictions" role="tab" aria-selected="true">Predictions</button>
+  <button class="bn-btn" data-tab="results" role="tab" aria-selected="false">Results</button>
+  <button class="bn-btn" data-tab="analytics" role="tab" aria-selected="false">Analytics</button>
 </div>
 
 <footer class="foot">
-  <p>10,361 players &middot; 12 data sources &middot; All free &middot;
+  <p id="foot-info">10,361 players &middot; 12 data sources &middot; All free &middot;
   <a href="https://github.com/gabrielvuksani/tennis-predictor">GitHub</a></p>
+  <p class="foot-updated" id="foot-updated"></p>
 </footer>
 <script src="assets/js/app.js"></script>
 </body>

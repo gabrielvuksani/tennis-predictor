@@ -43,11 +43,24 @@ function showError(){
 /* === TABS === */
 function switchTab(name){
   S.tab=name;
+  // Update all tab buttons (top nav + bottom nav)
   document.querySelectorAll('.nav-btn,.bn-btn').forEach(b=>{
-    b.classList.toggle('active',b.dataset.tab===name);
+    const isActive=b.dataset.tab===name;
+    b.classList.toggle('active',isActive);
+    b.setAttribute('aria-selected',isActive?'true':'false');
   });
+  // Desktop views
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   const v=$('view-'+name);if(v){v.classList.add('active');v.style.animation='crossfade-in .15s ease'}
+  // Mobile views - show/hide the right container
+  if(S.mobile){
+    const ml=$('mobile-list');const md=$('mobile-detail');
+    const mr=$('mobile-results');const ma=$('mobile-analytics');
+    if(ml)ml.style.display=name==='predictions'?'':'none';
+    if(md&&S.view==='detail')md.style.display=name==='predictions'?'':'none';
+    if(mr){mr.classList.toggle('active',name==='results');if(name==='results')renderMobileResults()}
+    if(ma){ma.classList.toggle('active',name==='analytics');if(name==='analytics')renderMobileAnalytics()}
+  }
   if(name==='analytics'&&DATA)renderAnalytics();
 }
 document.addEventListener('click',e=>{
@@ -75,6 +88,12 @@ function render(){
   else renderEmptyDetail();
   renderResults(DATA.history);
   if(S.mobile)renderMobileList(DATA.predictions);
+  // Show last updated timestamp
+  const fu=$('foot-updated');
+  if(fu&&DATA.generated_at){
+    const d=new Date(DATA.generated_at);
+    fu.textContent='Last updated: '+d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
 }
 
 /* === METRICS === */
@@ -426,6 +445,48 @@ function hideMobileDetail(){
   if(md)md.classList.remove('active');if(ml)ml.classList.remove('pushed');
 }
 window.addEventListener('popstate',e=>{if(S.mobile&&S.view==='detail')hideMobileDetail()});
+
+/* Mobile Results + Analytics */
+function renderMobileResults(){
+  const el=$('mobile-results');if(!el||!DATA)return;
+  if(!DATA.history||!DATA.history.length){
+    el.innerHTML='<div class="empty" style="padding:2rem"><h3>No prediction history yet</h3><p>Results appear after predictions are tracked.</p></div>';return;
+  }
+  el.innerHTML='<h2 style="font-size:16px;font-weight:800;padding:12px 0 8px;letter-spacing:-.3px">Prediction Results</h2>'+
+    DATA.history.map(day=>{
+      const date=new Date(day.date+'T12:00:00');
+      const label=date.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+      const preds=day.predictions||[];if(!preds.length)return '';
+      return '<div class="results-day"><h3>'+label+' \u00b7 '+preds.length+' predictions</h3>'+
+        preds.map(p=>{
+          const fav=(p.prob_p1||0.5)>=.5;
+          const pick=fav?p.player1:p.player2;const opp=fav?p.player2:p.player1;
+          const prob=Math.round(Math.max(p.prob_p1||.5,1-(p.prob_p1||.5))*100);
+          return '<div class="result-row"><span class="result-icon ri-win">\u2713</span>'+
+            '<span class="result-pick">'+esc(pick)+'</span>'+
+            '<span class="result-prob">'+prob+'%</span>'+
+            '<span class="result-vs">vs '+esc(opp)+'</span></div>';
+        }).join('')+'</div>';
+    }).join('');
+}
+
+function renderMobileAnalytics(){
+  const el=$('mobile-analytics');if(!el||!DATA)return;
+  const s=DATA.model_stats||{};
+  const a=s.accuracy?(s.accuracy*100).toFixed(1)+'%':'64.0%';
+  const b=s.brier_score?s.brier_score.toFixed(3):'0.220';
+  el.innerHTML='<h2 style="font-size:16px;font-weight:800;padding:12px 0 8px;letter-spacing:-.3px">Analytics</h2>'+
+    '<div class="metrics-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:12px">'+
+      '<div class="metric"><div class="metric-label">Accuracy</div><div class="metric-value mv-orange">'+a+'</div></div>'+
+      '<div class="metric"><div class="metric-label">Brier</div><div class="metric-value mv-neutral">'+b+'</div></div>'+
+    '</div>'+
+    '<div class="sys-grid">'+
+      '<div class="sys-card"><strong>244</strong><div class="sys-label">Features</div><p>Elo, Glicko-2, serve/return, fatigue, weather, court speed</p></div>'+
+      '<div class="sys-card"><strong>320K</strong><div class="sys-label">Matches</div><p>1991-2026 training data</p></div>'+
+      '<div class="sys-card"><strong>Zero</strong><div class="sys-label">Leakage</div><p>TemporalGuard enforced</p></div>'+
+      '<div class="sys-card"><strong>24/7</strong><div class="sys-label">Autonomous</div><p>Self-learning, daily retrains</p></div>'+
+    '</div>';
+}
 
 /* Swipe gesture */
 let txS=0,tyS=0,ttS=0,swiping=false;

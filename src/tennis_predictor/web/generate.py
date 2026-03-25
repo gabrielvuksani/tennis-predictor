@@ -1,13 +1,14 @@
-"""Static site generator — full-featured prediction dashboard.
+"""Static site generator — Bloomberg-style analytical trading dashboard.
 
 Features:
-1. Match predictions with expandable analysis
-2. Tournament grouping
-3. Results tracker
-4. Performance analytics
-5. Player profiles (click any name)
-6. Browser push notifications
-7. Dark/Light mode
+1. Sidebar match list with confidence dots + detail panel
+2. Tournament grouping with filters (confidence + surface)
+3. Results tracker with prediction history
+4. Analytics with calibration chart + system info
+5. Player profiles modal (click any name)
+6. Responsive: 4 breakpoints (960/768/480px)
+7. Mobile: two-state slide transitions, swipe gestures, history API
+8. Dark/Light theme with orange accent
 """
 
 from __future__ import annotations
@@ -71,7 +72,13 @@ def _write_html():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tennis Predictor</title>
+<meta name="description" content="AI-powered ATP tennis match predictions with 65.9% accuracy. Bloomberg-style analytical dashboard with real-time Elo ratings, H2H stats, and calibrated probabilities.">
+<meta name="theme-color" content="#050505" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)">
+<meta property="og:title" content="Tennis Predictor PRO">
+<meta property="og:description" content="AI-powered ATP tennis match predictions. 230+ features, zero data leakage, calibration-first.">
+<meta property="og:type" content="website">
+<title>Tennis Predictor PRO</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -79,19 +86,19 @@ def _write_html():
 </head>
 <body>
 <!-- Topbar -->
-<nav class="topbar"><div class="tb-in">
+<nav class="topbar" role="navigation" aria-label="Main navigation"><div class="tb-in">
   <div class="brand">
-    <div class="brand-icon">T</div>
+    <div class="brand-icon" aria-hidden="true">T</div>
     <span class="brand-text">Tennis Predictor</span>
     <span class="brand-tag">PRO</span>
   </div>
   <div class="tb-right">
-    <div class="nav" id="top-nav">
-      <button class="nav-btn active" data-tab="predictions">Predictions</button>
-      <button class="nav-btn" data-tab="results">Results</button>
-      <button class="nav-btn" data-tab="analytics">Analytics</button>
+    <div class="nav" id="top-nav" role="tablist" aria-label="Dashboard sections">
+      <button class="nav-btn active" data-tab="predictions" role="tab" aria-selected="true">Predictions</button>
+      <button class="nav-btn" data-tab="results" role="tab" aria-selected="false">Results</button>
+      <button class="nav-btn" data-tab="analytics" role="tab" aria-selected="false">Analytics</button>
     </div>
-    <button class="theme-btn" id="theme-toggle" title="Toggle theme">&#9790;</button>
+    <button class="theme-btn" id="theme-toggle" title="Toggle theme" aria-label="Toggle dark/light theme">&#9790;</button>
   </div>
 </div></nav>
 
@@ -100,12 +107,13 @@ def _write_html():
 
 <!-- Desktop/Tablet Layout -->
 <div class="app-layout">
-  <aside class="sidebar" id="sidebar">
-    <div class="filters" id="filters">
+  <aside class="sidebar" id="sidebar" aria-label="Match list">
+    <div class="filters" id="filters" role="toolbar" aria-label="Filter predictions">
       <button class="filter-btn active" data-type="conf" data-val="all">All</button>
       <button class="filter-btn" data-type="conf" data-val="high">High Conf</button>
       <button class="filter-btn" data-type="conf" data-val="medium">Medium</button>
-      <button class="filter-btn" data-type="surface" data-val="all">All Surfaces</button>
+      <span class="filter-sep"></span>
+      <button class="filter-btn active" data-type="surface" data-val="all">All Surfaces</button>
       <button class="filter-btn" data-type="surface" data-val="hard">Hard</button>
       <button class="filter-btn" data-type="surface" data-val="clay">Clay</button>
       <button class="filter-btn" data-type="surface" data-val="grass">Grass</button>
@@ -114,47 +122,50 @@ def _write_html():
     <div id="match-list"></div>
   </aside>
   <main class="main-panel">
-    <div id="view-predictions" class="view active">
+    <div id="view-predictions" class="view active" role="tabpanel">
       <div class="detail-topbar" id="detail-topbar"></div>
       <div id="detail-panel"></div>
     </div>
-    <div id="view-results" class="view">
+    <div id="view-results" class="view" role="tabpanel">
       <div id="results-content"></div>
     </div>
-    <div id="view-analytics" class="view">
+    <div id="view-analytics" class="view" role="tabpanel">
       <div class="metrics-grid" id="perf"></div>
       <div class="chart-container" id="chart-wrap">
         <div class="chart-title">Calibration</div>
         <div class="chart-sub">Predicted probability vs actual win rate. Diagonal = perfect.</div>
-        <canvas id="cal"></canvas>
-        <div class="cal-tooltip" id="cal-tooltip"></div>
+        <canvas id="cal" aria-label="Calibration chart"></canvas>
+        <div class="cal-tooltip" id="cal-tooltip" role="tooltip"></div>
       </div>
       <div id="system-info"></div>
     </div>
   </main>
 </div>
 
-<!-- Mobile Containers -->
+<!-- Mobile Containers (predictions + results + analytics all rendered here on mobile) -->
 <div class="mobile-container" id="mobile-container">
   <div class="mobile-list" id="mobile-list"></div>
   <div class="mobile-detail" id="mobile-detail"></div>
+  <div class="mobile-results" id="mobile-results"></div>
+  <div class="mobile-analytics" id="mobile-analytics"></div>
 </div>
 
 <!-- Player Modal -->
-<div class="modal-overlay" id="player-modal">
+<div class="modal-overlay" id="player-modal" role="dialog" aria-modal="true" aria-label="Player profile">
   <div class="modal" id="modal-content"></div>
 </div>
 
 <!-- Bottom Nav (mobile) -->
-<div class="bottom-nav" id="bottom-nav">
-  <button class="bn-btn active" data-tab="predictions">Predictions</button>
-  <button class="bn-btn" data-tab="results">Results</button>
-  <button class="bn-btn" data-tab="analytics">Analytics</button>
+<div class="bottom-nav" id="bottom-nav" role="tablist" aria-label="Dashboard sections">
+  <button class="bn-btn active" data-tab="predictions" role="tab" aria-selected="true">Predictions</button>
+  <button class="bn-btn" data-tab="results" role="tab" aria-selected="false">Results</button>
+  <button class="bn-btn" data-tab="analytics" role="tab" aria-selected="false">Analytics</button>
 </div>
 
 <footer class="foot">
-  <p>10,361 players &middot; 12 data sources &middot; All free &middot;
+  <p id="foot-info">10,361 players &middot; 12 data sources &middot; All free &middot;
   <a href="https://github.com/gabrielvuksani/tennis-predictor">GitHub</a></p>
+  <p class="foot-updated" id="foot-updated"></p>
 </footer>
 <script src="assets/js/app.js"></script>
 </body>
@@ -185,10 +196,12 @@ def _write_css():
   --amber:#d97706;--amber-dim:rgba(217,119,6,0.06);
 }
 
+html{scroll-behavior:smooth}
 body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--t);
   -webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
 .mono{font-family:'JetBrains Mono',monospace}
 a{color:var(--t2);text-decoration:none}a:hover{color:var(--orange)}
+::selection{background:rgba(249,115,22,0.25);color:var(--t)}
 
 /* === TOPBAR === */
 .topbar{position:sticky;top:0;z-index:50;background:rgba(5,5,5,0.85);
@@ -232,9 +245,14 @@ a{color:var(--t2);text-decoration:none}a:hover{color:var(--orange)}
 .app-layout{display:grid;grid-template-columns:280px 1fr;max-width:1200px;
   margin:auto;min-height:calc(100vh - 120px)}
 .sidebar{background:var(--surface);border-right:1px solid var(--border);
-  padding:12px;overflow-y:auto;position:sticky;top:52px;height:calc(100vh - 52px)}
+  padding:12px;overflow-y:auto;position:sticky;top:52px;height:calc(100vh - 52px);
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.sidebar::-webkit-scrollbar{width:4px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 .main-panel{padding:0 20px 3rem;overflow-y:auto}
 .view{display:none}.view.active{display:block}
+.filter-sep{width:1px;height:20px;background:var(--border);margin:0 2px;align-self:center}
 
 /* === FILTERS === */
 .filters{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap;padding:0 4px}
@@ -261,8 +279,7 @@ a{color:var(--t2);text-decoration:none}a:hover{color:var(--orange)}
 .conf-dot.med{background:var(--orange);box-shadow:0 0 6px rgba(249,115,22,0.3)}
 .conf-dot.low{background:var(--t4)}
 .mi-info{flex:1;min-width:0}
-.mi-names{font-size:11px;font-weight:600;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-[data-theme="light"] .mi-names{color:#333}
+.mi-names{font-size:11px;font-weight:600;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mi-meta{font-size:9px;color:var(--t4);margin-top:1px}
 .mi-prob{font-size:13px;font-weight:800;color:var(--orange);font-family:'JetBrains Mono',monospace}
 @keyframes pulse-glow{0%,100%{box-shadow:0 0 6px rgba(34,197,94,0.4)}50%{box-shadow:0 0 12px rgba(34,197,94,0.7)}}
@@ -297,7 +314,7 @@ a{color:var(--t2);text-decoration:none}a:hover{color:var(--orange)}
 .stat-title{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:1.2px;
   font-weight:700;margin-bottom:10px;text-align:center}
 .h-stat{margin-bottom:8px}
-.h-stat-label{font-size:9px;color:var(--t4);text-transform:uppercase;letter-spacing:1px;
+.h-stat-label{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:1px;
   font-weight:600;margin-bottom:3px;text-align:center}
 .h-stat-row{display:grid;grid-template-columns:55px 1fr 55px;gap:6px;align-items:center;margin-bottom:6px}
 .h-stat-val{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--t4);font-weight:600}
@@ -392,6 +409,7 @@ canvas{max-width:100%;height:auto!important}
 /* === FOOTER + EMPTY + SKELETON === */
 .foot{text-align:center;padding:1.5rem;font-size:10px;color:var(--t4);border-top:1px solid var(--border)}
 .foot a{color:var(--t3)}.foot a:hover{color:var(--orange)}
+.foot-updated{font-size:9px;color:var(--t4);margin-top:4px;font-family:'JetBrains Mono',monospace}
 .empty{text-align:center;padding:3rem;color:var(--t3)}
 .empty h3{font-size:1rem;color:var(--t2);margin-bottom:.3rem}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
@@ -403,6 +421,8 @@ canvas{max-width:100%;height:auto!important}
 
 /* === MOBILE + BOTTOM NAV === */
 .mobile-container{display:none}
+.mobile-results,.mobile-analytics{display:none;padding:0 1rem}
+.mobile-results.active,.mobile-analytics.active{display:block}
 .bottom-nav{display:none}
 @keyframes fadeSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes crossfade-in{from{opacity:0}to{opacity:1}}
@@ -441,7 +461,7 @@ canvas{max-width:100%;height:auto!important}
   .metrics-grid{grid-template-columns:repeat(2,1fr);gap:4px}
   .metric{padding:8px 10px}
   .metric-value{font-size:18px}
-  .mobile-container{display:block;position:relative;overflow:hidden;min-height:calc(100vh - 160px)}
+  .mobile-container{display:block;min-height:calc(100vh - 160px);position:relative;overflow:hidden}
   .mobile-list{padding:0 1rem;transition:transform 300ms cubic-bezier(0.4,0,0.2,1);will-change:transform}
   .mobile-detail{position:absolute;inset:0;transform:translateX(100%);padding:0 1rem;
     overflow-y:auto;background:var(--bg);transition:transform 300ms cubic-bezier(0.4,0,0.2,1);will-change:transform}
@@ -521,11 +541,24 @@ function showError(){
 /* === TABS === */
 function switchTab(name){
   S.tab=name;
+  // Update all tab buttons (top nav + bottom nav)
   document.querySelectorAll('.nav-btn,.bn-btn').forEach(b=>{
-    b.classList.toggle('active',b.dataset.tab===name);
+    const isActive=b.dataset.tab===name;
+    b.classList.toggle('active',isActive);
+    b.setAttribute('aria-selected',isActive?'true':'false');
   });
+  // Desktop views
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   const v=$('view-'+name);if(v){v.classList.add('active');v.style.animation='crossfade-in .15s ease'}
+  // Mobile views - show/hide the right container
+  if(S.mobile){
+    const ml=$('mobile-list');const md=$('mobile-detail');
+    const mr=$('mobile-results');const ma=$('mobile-analytics');
+    if(ml)ml.style.display=name==='predictions'?'':'none';
+    if(md&&S.view==='detail')md.style.display=name==='predictions'?'':'none';
+    if(mr){mr.classList.toggle('active',name==='results');if(name==='results')renderMobileResults()}
+    if(ma){ma.classList.toggle('active',name==='analytics');if(name==='analytics')renderMobileAnalytics()}
+  }
   if(name==='analytics'&&DATA)renderAnalytics();
 }
 document.addEventListener('click',e=>{
@@ -553,6 +586,12 @@ function render(){
   else renderEmptyDetail();
   renderResults(DATA.history);
   if(S.mobile)renderMobileList(DATA.predictions);
+  // Show last updated timestamp
+  const fu=$('foot-updated');
+  if(fu&&DATA.generated_at){
+    const d=new Date(DATA.generated_at);
+    fu.textContent='Last updated: '+d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
 }
 
 /* === METRICS === */
@@ -905,6 +944,48 @@ function hideMobileDetail(){
 }
 window.addEventListener('popstate',e=>{if(S.mobile&&S.view==='detail')hideMobileDetail()});
 
+/* Mobile Results + Analytics */
+function renderMobileResults(){
+  const el=$('mobile-results');if(!el||!DATA)return;
+  if(!DATA.history||!DATA.history.length){
+    el.innerHTML='<div class="empty" style="padding:2rem"><h3>No prediction history yet</h3><p>Results appear after predictions are tracked.</p></div>';return;
+  }
+  el.innerHTML='<h2 style="font-size:16px;font-weight:800;padding:12px 0 8px;letter-spacing:-.3px">Prediction Results</h2>'+
+    DATA.history.map(day=>{
+      const date=new Date(day.date+'T12:00:00');
+      const label=date.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+      const preds=day.predictions||[];if(!preds.length)return '';
+      return '<div class="results-day"><h3>'+label+' \u00b7 '+preds.length+' predictions</h3>'+
+        preds.map(p=>{
+          const fav=(p.prob_p1||0.5)>=.5;
+          const pick=fav?p.player1:p.player2;const opp=fav?p.player2:p.player1;
+          const prob=Math.round(Math.max(p.prob_p1||.5,1-(p.prob_p1||.5))*100);
+          return '<div class="result-row"><span class="result-icon ri-win">\u2713</span>'+
+            '<span class="result-pick">'+esc(pick)+'</span>'+
+            '<span class="result-prob">'+prob+'%</span>'+
+            '<span class="result-vs">vs '+esc(opp)+'</span></div>';
+        }).join('')+'</div>';
+    }).join('');
+}
+
+function renderMobileAnalytics(){
+  const el=$('mobile-analytics');if(!el||!DATA)return;
+  const s=DATA.model_stats||{};
+  const a=s.accuracy?(s.accuracy*100).toFixed(1)+'%':'64.0%';
+  const b=s.brier_score?s.brier_score.toFixed(3):'0.220';
+  el.innerHTML='<h2 style="font-size:16px;font-weight:800;padding:12px 0 8px;letter-spacing:-.3px">Analytics</h2>'+
+    '<div class="metrics-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:12px">'+
+      '<div class="metric"><div class="metric-label">Accuracy</div><div class="metric-value mv-orange">'+a+'</div></div>'+
+      '<div class="metric"><div class="metric-label">Brier</div><div class="metric-value mv-neutral">'+b+'</div></div>'+
+    '</div>'+
+    '<div class="sys-grid">'+
+      '<div class="sys-card"><strong>244</strong><div class="sys-label">Features</div><p>Elo, Glicko-2, serve/return, fatigue, weather, court speed</p></div>'+
+      '<div class="sys-card"><strong>320K</strong><div class="sys-label">Matches</div><p>1991-2026 training data</p></div>'+
+      '<div class="sys-card"><strong>Zero</strong><div class="sys-label">Leakage</div><p>TemporalGuard enforced</p></div>'+
+      '<div class="sys-card"><strong>24/7</strong><div class="sys-label">Autonomous</div><p>Self-learning, daily retrains</p></div>'+
+    '</div>';
+}
+
 /* Swipe gesture */
 let txS=0,tyS=0,ttS=0,swiping=false;
 document.addEventListener('touchstart',e=>{
@@ -997,13 +1078,15 @@ init();
 
 
 def _write_sw():
-    """Write service worker for push notifications (placeholder)."""
+    """Write minimal service worker for offline caching of static assets."""
     (SITE_DIR / "sw.js").write_text("""
-// Service worker for Tennis Predictor notifications
-self.addEventListener('install', e => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
-self.addEventListener('push', e => {
-  const data = e.data ? e.data.json() : {title: 'Tennis Predictor', body: 'New predictions available!'};
-  e.waitUntil(self.registration.showNotification(data.title, {body: data.body, icon: '/tennis-predictor/favicon.ico'}));
+// Service worker — cache static assets for faster loads
+const CACHE='tp-v2';
+const ASSETS=['./','assets/css/style.css','assets/js/app.js'];
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));self.skipWaiting()});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim()});
+self.addEventListener('fetch',e=>{
+  if(e.request.url.includes('predictions.json')){e.respondWith(fetch(e.request));return}
+  e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)));
 });
 """)

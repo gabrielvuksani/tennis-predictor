@@ -18,7 +18,6 @@ on:
           - quick
 
 permissions:
-  contents: write
   pages: write
   id-token: write
 
@@ -66,12 +65,15 @@ jobs:
           # Afternoon cron (14:00) = quick mode, morning (06:00) = full
           HOUR=$(date -u +%H)
           INPUT_MODE="${{ github.event.inputs.mode }}"
-          if [ "$INPUT_MODE" = "quick" ] || [ "$HOUR" -ge 12 ]; then
+          if [ "$INPUT_MODE" = "full" ]; then
+            echo "mode=full" >> $GITHUB_OUTPUT
+          elif [ "$INPUT_MODE" = "quick" ] || [ "$HOUR" -ge 12 ]; then
             echo "mode=quick" >> $GITHUB_OUTPUT
           else
             echo "mode=full" >> $GITHUB_OUTPUT
           fi
-          echo "Running in ${{ steps.mode.outputs.mode || 'full' }} mode"
+          MODE=$(cat $GITHUB_OUTPUT | grep mode | cut -d= -f2)
+          echo "Running in $MODE mode"
 
       - name: Check model state
         id: model
@@ -101,7 +103,7 @@ jobs:
 
       - name: Save model state
         uses: actions/cache/save@v4
-        if: always()
+        if: success() || cancelled()
         with:
           path: |
             data/processed/
