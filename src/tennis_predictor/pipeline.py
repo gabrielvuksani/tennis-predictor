@@ -70,7 +70,7 @@ def run_full_pipeline(
     )
 
     if tour_level_only:
-        matches = matches[matches["tourney_level"].isin(["G", "M", "F", "A"])].copy()
+        matches = matches[matches["tourney_level"].isin(["G", "M", "F", "A", "250", "500", "1000"])].copy()
         matches = matches.reset_index(drop=True)
         print(f"Filtered to tour-level: {len(matches):,} matches")
 
@@ -79,9 +79,17 @@ def run_full_pipeline(
         print("\n" + "=" * 60)
         print("STEP 2: Merging betting odds")
         print("=" * 60)
-        from tennis_predictor.data.odds_merge import merge_odds_with_matches
-        matches = merge_odds_with_matches(matches)
-    else:
+        try:
+            from tennis_predictor.data.odds_merge import merge_odds_with_matches
+            matches = merge_odds_with_matches(matches)
+            odds_count = matches["odds_implied_w"].notna().sum()
+            print(f"Odds successfully merged: {odds_count:,} matches with odds")
+            if odds_count == 0:
+                print("WARNING: Odds merge produced 0 matches — check tennis-data.co.uk availability")
+        except Exception as e:
+            print(f"WARNING: Odds merge failed: {e}")
+            print("Continuing without odds data.")
+    if "odds_implied_w" not in matches.columns:
         matches["odds_implied_w"] = np.nan
         matches["odds_implied_l"] = np.nan
         matches["odds_pinnacle_w"] = np.nan

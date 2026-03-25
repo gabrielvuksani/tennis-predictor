@@ -56,7 +56,7 @@ jobs:
 
           results = run_full_pipeline(
               start_year=1991,
-              tour_level_only=False,
+              tour_level_only=True,
               test_year=2023,
               fetch_weather=True,
               fetch_court_speed=True,
