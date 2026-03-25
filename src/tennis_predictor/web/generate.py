@@ -429,6 +429,21 @@ canvas{max-width:100%;height:auto!important}
 @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 
 :focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+
+/* === PRINT === */
+@media print{
+  .topbar,.bottom-nav,.filters,.theme-btn,.mobile-container,.modal-overlay{display:none!important}
+  body{background:#fff;color:#000;padding:0}
+  .app-layout{display:block!important}
+  .sidebar{position:static;height:auto;border:none;padding:0}
+  .main-panel{padding:0}
+  .mi{break-inside:avoid;border:1px solid #ccc;margin-bottom:4px}
+  .metric{border:1px solid #ccc}
+  .metric-value{color:#000!important}
+  .fo-prob{color:#000!important}
+  a{color:#000}
+  .foot{border:none}
+}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{
   animation-duration:0.01ms!important;animation-iteration-count:1!important;
   transition-duration:0.01ms!important}}
@@ -574,8 +589,10 @@ function setTheme(t){
   localStorage.setItem('theme',t);
   if(themeBtn)themeBtn.textContent=t==='dark'?'\u263E':'\u2600';
 }
-if(themeBtn)themeBtn.addEventListener('click',()=>
-  setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'));
+if(themeBtn)themeBtn.addEventListener('click',()=>{
+  setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
+  if(S.tab==='analytics'&&DATA)setTimeout(()=>renderCal(DATA.calibration),50);
+});
 setTheme(localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'));
 
 /* === RENDER === */
@@ -601,11 +618,13 @@ function renderMetrics(s){
   const a=s?.accuracy?(s.accuracy*100).toFixed(1)+'%':'\u2014';
   const b=s?.brier_score?s.brier_score.toFixed(3):'\u2014';
   const n=s?.n_matches?s.n_matches.toLocaleString():'\u2014';
+  const gs=s?.gs_accuracy?(s.gs_accuracy*100).toFixed(1)+'%':(s?.accuracy?'—':'—');
+  const hc=s?.hc_accuracy?(s.hc_accuracy*100).toFixed(1)+'%':(s?.accuracy?'—':'—');
   el.innerHTML=
     '<div class="metric"><div class="metric-label">Accuracy</div><div class="metric-value mv-orange">'+a+'</div><div class="metric-sub">Test matches</div></div>'+
     '<div class="metric"><div class="metric-label">Brier</div><div class="metric-value mv-neutral">'+b+'</div><div class="metric-sub">Bookmakers: 0.196</div></div>'+
-    '<div class="metric"><div class="metric-label">Grand Slams</div><div class="metric-value mv-green">68.9%</div><div class="metric-sub">0.197 Brier</div></div>'+
-    '<div class="metric"><div class="metric-label">High Conf</div><div class="metric-value mv-orange">75.1%</div><div class="metric-sub">Confident picks</div></div>'+
+    '<div class="metric"><div class="metric-label">Grand Slams</div><div class="metric-value mv-green">'+gs+'</div><div class="metric-sub">Major tournaments</div></div>'+
+    '<div class="metric"><div class="metric-label">High Conf</div><div class="metric-value mv-orange">'+hc+'</div><div class="metric-sub">Confident picks</div></div>'+
     '<div class="metric"><div class="metric-label">Matches</div><div class="metric-value mv-neutral">'+n+'</div><div class="metric-sub">Training data</div></div>';
 }
 
@@ -628,12 +647,12 @@ function renderSidebar(list){
       const prob=Math.round(Math.max(p.prob_p1,1-p.prob_p1)*100);
       const tier=p.confidence_tier||'';
       const dotCls=tier==='high'?'high':tier==='medium'?'med':'low';
-      html+='<div class="mi'+(p._idx===S.sel?' active':'')+'" data-idx="'+p._idx+'" style="animation:fadeSlideUp .3s ease '+(count*50)+'ms both">'+
-        '<div class="conf-dot '+dotCls+'"></div>'+
+      html+='<div class="mi'+(p._idx===S.sel?' active':'')+'" data-idx="'+p._idx+'" role="button" tabindex="0" aria-label="'+esc(wN)+' '+prob+'% vs '+esc(lN)+'" style="animation:fadeSlideUp .3s ease '+(count*50)+'ms both">'+
+        '<div class="conf-dot '+dotCls+'" aria-hidden="true"></div>'+
         '<div class="mi-info"><div class="mi-names">'+esc(wN)+' vs '+esc(lN)+'</div>'+
         '<div class="mi-meta">'+(p.round?esc(p.round)+' \u00b7 ':'')+esc(p.surface||'')+
         (tier?' \u00b7 '+tier.charAt(0).toUpperCase()+tier.slice(1):'')+'</div></div>'+
-        '<div class="mi-prob">'+prob+'%</div></div>';
+        '<div class="mi-prob" aria-hidden="true">'+prob+'%</div></div>';
       count++;
     });
   }
@@ -641,11 +660,19 @@ function renderSidebar(list){
   const fc=$('filter-count');if(fc)fc.textContent=filtered.length+' match'+(filtered.length!==1?'es':'');
 }
 
-/* Match selection */
+/* Match selection — click + keyboard */
 document.addEventListener('click',e=>{
   const mi=e.target.closest('.mi');
   if(mi&&mi.dataset.idx!==undefined&&!e.target.closest('.plink')){
     selectMatch(parseInt(mi.dataset.idx));
+  }
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'||e.key===' '){
+    const mi=e.target.closest('.mi');
+    if(mi&&mi.dataset.idx!==undefined){e.preventDefault();selectMatch(parseInt(mi.dataset.idx))}
+    const pl=e.target.closest('.plink');
+    if(pl){e.preventDefault();pl.click()}
   }
 });
 function selectMatch(idx){
@@ -709,11 +736,11 @@ function renderDetail(p){
   dp.innerHTML=
     '<div class="faceoff">'+
       '<div class="fo-player fav"><div class="fo-avatar">'+esc(wI)+'</div>'+
-        '<div class="fo-name plink" data-name="'+esc(wN)+'">'+esc(wN)+'</div>'+
+        '<div class="fo-name plink" data-name="'+esc(wN)+'" tabindex="0" role="button">'+esc(wN)+'</div>'+
         '<div class="fo-rank">#'+(wR||'\u2014')+' \u00b7 Form '+(ws.form_last5||'\u2014')+'</div></div>'+
       '<div class="fo-vs"><div class="fo-prob">'+prob+'%</div><div class="fo-prob-label">Win Prob</div></div>'+
       '<div class="fo-player"><div class="fo-avatar">'+esc(lI)+'</div>'+
-        '<div class="fo-name plink" data-name="'+esc(lN)+'">'+esc(lN)+'</div>'+
+        '<div class="fo-name plink" data-name="'+esc(lN)+'" tabindex="0" role="button">'+esc(lN)+'</div>'+
         '<div class="fo-rank">#'+(lR||'\u2014')+' \u00b7 Form '+(ls.form_last5||'\u2014')+'</div></div>'+
     '</div>'+
     '<div class="detail-grid"><div>'+renderStatBars(ws,ls)+'</div><div>'+renderH2H(d.h2h,wN,lN,fav)+renderFactors(d.factors)+'</div></div>';
@@ -785,7 +812,7 @@ function renderResults(history){
         const fav=(p.prob_p1||0.5)>=.5;
         const pick=fav?p.player1:p.player2;const opp=fav?p.player2:p.player1;
         const prob=Math.round(Math.max(p.prob_p1||.5,1-(p.prob_p1||.5))*100);
-        return '<div class="result-row"><span class="result-icon ri-win">\u2713</span>'+
+        return '<div class="result-row"><span class="result-icon" style="background:var(--orange-dim);color:var(--orange)">\u2192</span>'+
           '<span class="result-pick">'+esc(pick)+'</span>'+
           '<span class="result-prob">'+prob+'%</span>'+
           '<span class="result-vs">vs '+esc(opp)+'</span></div>';
@@ -799,14 +826,16 @@ function renderAnalytics(){
 }
 function renderPerf(s){
   const el=$('perf');if(!el)return;
-  const a=s?.accuracy?(s.accuracy*100).toFixed(1)+'%':'64.0%';
-  const b=s?.brier_score?s.brier_score.toFixed(3):'0.220';
-  const n=s?.n_matches?s.n_matches.toLocaleString():'25,634';
+  const a=s?.accuracy?(s.accuracy*100).toFixed(1)+'%':'\u2014';
+  const b=s?.brier_score?s.brier_score.toFixed(3):'\u2014';
+  const n=s?.n_matches?s.n_matches.toLocaleString():'\u2014';
+  const gs=s?.gs_accuracy?(s.gs_accuracy*100).toFixed(1)+'%':'\u2014';
+  const hc=s?.hc_accuracy?(s.hc_accuracy*100).toFixed(1)+'%':'\u2014';
   el.innerHTML=
     '<div class="metric"><div class="metric-label">Accuracy</div><div class="metric-value mv-orange">'+a+'</div><div class="metric-sub">On '+n+' test matches</div></div>'+
     '<div class="metric"><div class="metric-label">Brier Score</div><div class="metric-value mv-neutral">'+b+'</div><div class="metric-sub">Lower = better (books: 0.196)</div></div>'+
-    '<div class="metric"><div class="metric-label">Grand Slams</div><div class="metric-value mv-green">68.9%</div><div class="metric-sub">0.197 Brier</div></div>'+
-    '<div class="metric"><div class="metric-label">High Confidence</div><div class="metric-value mv-orange">75.1%</div><div class="metric-sub">Accuracy when confident</div></div>';
+    '<div class="metric"><div class="metric-label">Grand Slams</div><div class="metric-value mv-green">'+gs+'</div><div class="metric-sub">Major tournaments</div></div>'+
+    '<div class="metric"><div class="metric-label">High Confidence</div><div class="metric-value mv-orange">'+hc+'</div><div class="metric-sub">Confident picks</div></div>';
 }
 function renderSystemInfo(){
   const el=$('system-info');if(!el)return;
@@ -882,7 +911,16 @@ function renderCal(c){
     }else{tip.classList.remove('show')}
   };
   cv.onmouseleave=function(){const tip=$('cal-tooltip');if(tip)tip.classList.remove('show')};
+  // Touch support for chart tooltip
+  cv.ontouchstart=function(e){cv.onmousemove({clientX:e.touches[0].clientX,clientY:e.touches[0].clientY})};
+  cv.ontouchend=function(){const tip=$('cal-tooltip');if(tip)tip.classList.remove('show')};
 }
+// Re-render chart on resize
+let resizeTimer;
+window.addEventListener('resize',()=>{
+  clearTimeout(resizeTimer);
+  resizeTimer=setTimeout(()=>{if(S.tab==='analytics'&&DATA)renderCal(DATA.calibration)},200);
+});
 
 /* === MOBILE === */
 function renderMobileList(list){
@@ -928,11 +966,11 @@ function showMobileDetail(idx){
   md.innerHTML='<button class="mobile-back" onclick="hideMobileDetail()">\u2190 Back</button>'+
     '<div class="faceoff">'+
       '<div class="fo-player fav"><div class="fo-avatar">'+esc(wI)+'</div>'+
-        '<div class="fo-name plink" data-name="'+esc(wN)+'">'+esc(wN)+'</div>'+
+        '<div class="fo-name plink" data-name="'+esc(wN)+'" tabindex="0" role="button">'+esc(wN)+'</div>'+
         '<div class="fo-rank">#'+(wR||'\u2014')+'</div></div>'+
       '<div class="fo-vs"><div class="fo-prob">'+prob+'%</div><div class="fo-prob-label">Win Prob</div></div>'+
       '<div class="fo-player"><div class="fo-avatar">'+esc(lI)+'</div>'+
-        '<div class="fo-name plink" data-name="'+esc(lN)+'">'+esc(lN)+'</div>'+
+        '<div class="fo-name plink" data-name="'+esc(lN)+'" tabindex="0" role="button">'+esc(lN)+'</div>'+
         '<div class="fo-rank">#'+(lR||'\u2014')+'</div></div>'+
     '</div>'+renderStatBars(ws,ls)+renderH2H(d.h2h,wN,lN,fav)+renderFactors(d.factors);
   ml.classList.add('pushed');md.classList.add('active');
@@ -961,7 +999,7 @@ function renderMobileResults(){
           const fav=(p.prob_p1||0.5)>=.5;
           const pick=fav?p.player1:p.player2;const opp=fav?p.player2:p.player1;
           const prob=Math.round(Math.max(p.prob_p1||.5,1-(p.prob_p1||.5))*100);
-          return '<div class="result-row"><span class="result-icon ri-win">\u2713</span>'+
+          return '<div class="result-row"><span class="result-icon" style="background:var(--orange-dim);color:var(--orange)">\u2192</span>'+
             '<span class="result-pick">'+esc(pick)+'</span>'+
             '<span class="result-prob">'+prob+'%</span>'+
             '<span class="result-vs">vs '+esc(opp)+'</span></div>';
