@@ -1,6 +1,12 @@
-"""Central configuration for the tennis predictor system."""
+"""Central configuration for the tennis predictor system.
+
+Note: ELO_CONFIG, GLICKO2_CONFIG, and MODEL_CONFIG are compatibility layers
+that delegate to the HP singleton in hyperparams.py. HP is the single source
+of truth for all tunable parameters.
+"""
 
 from pathlib import Path
+from tennis_predictor.hyperparams import HP
 
 # Project paths
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -17,38 +23,27 @@ ODDS_DIR = RAW_DIR / "odds"
 WEATHER_DIR = RAW_DIR / "weather"
 COURT_SPEED_DIR = RAW_DIR / "court_speed"
 
-# Elo configuration
+# Elo configuration — delegates to HP.elo
 ELO_CONFIG = {
-    "initial_rating": 1500.0,
-    "k_factor_base": 250.0,
-    "k_factor_exponent": 0.4,
-    "k_factor_offset": 5,
-    # Surface-specific Elo uses 60% weight from surface, 40% from overall
-    "surface_weight": 0.6,
-    # Tournament level multipliers for K-factor
-    "level_multipliers": {
-        "G": 1.25,   # Grand Slams
-        "M": 1.10,   # Masters 1000
-        "F": 1.10,   # Tour Finals
-        "A": 1.00,   # ATP 500/250
-        "C": 0.85,   # Challengers
-        "S": 0.70,   # Satellites/ITF
-        "D": 0.90,   # Davis Cup
-    },
-    # Match format multiplier (best-of-5 results are more informative)
-    "bo5_multiplier": 1.10,
+    "initial_rating": HP.elo.initial_rating,
+    "k_factor_base": HP.elo.k_factor_base,
+    "k_factor_exponent": HP.elo.k_factor_exponent,
+    "k_factor_offset": HP.elo.k_factor_offset,
+    "surface_weight": HP.elo.surface_weight,
+    "level_multipliers": HP.elo.level_multipliers,
+    "bo5_multiplier": HP.elo.bo5_multiplier,
 }
 
-# Glicko-2 configuration
+# Glicko-2 configuration — delegates to HP.glicko2
 GLICKO2_CONFIG = {
-    "initial_rating": 1500.0,
-    "initial_rd": 350.0,    # Rating deviation
-    "initial_vol": 0.06,    # Volatility
-    "tau": 0.5,             # System constant (controls volatility change)
-    "epsilon": 0.000001,    # Convergence tolerance
-    "rd_decay_per_day": 0.5,  # RD increases when player is inactive
-    "max_rd": 350.0,
-    "min_rd": 30.0,
+    "initial_rating": HP.glicko2.initial_rating,
+    "initial_rd": HP.glicko2.initial_rd,
+    "initial_vol": HP.glicko2.initial_vol,
+    "tau": HP.glicko2.tau,
+    "epsilon": HP.glicko2.epsilon,
+    "rd_decay_per_day": HP.glicko2.rd_decay_per_day,
+    "max_rd": HP.glicko2.max_rd,
+    "min_rd": HP.glicko2.min_rd,
 }
 
 # Feature engineering
@@ -56,45 +51,45 @@ ROLLING_WINDOWS = [5, 10, 20, 50]  # Recent match windows
 SURFACE_TYPES = ["Hard", "Clay", "Grass", "Carpet"]
 TOURNAMENT_LEVELS = ["G", "M", "F", "A", "C", "S", "D"]
 
-# Model configuration
+# Model configuration — delegates to HP.model
 MODEL_CONFIG = {
     "xgboost": {
-        "n_estimators": 500,
-        "max_depth": 6,
-        "learning_rate": 0.05,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
-        "min_child_weight": 5,
-        "reg_alpha": 0.1,
-        "reg_lambda": 1.0,
+        "n_estimators": HP.model.xgb_n_estimators,
+        "max_depth": HP.model.xgb_max_depth,
+        "learning_rate": HP.model.xgb_learning_rate,
+        "subsample": HP.model.xgb_subsample,
+        "colsample_bytree": HP.model.xgb_colsample_bytree,
+        "min_child_weight": HP.model.xgb_min_child_weight,
+        "reg_alpha": HP.model.xgb_reg_alpha,
+        "reg_lambda": HP.model.xgb_reg_lambda,
         "objective": "binary:logistic",
         "eval_metric": "logloss",
         "tree_method": "hist",
-        "early_stopping_rounds": 50,
+        "early_stopping_rounds": HP.model.xgb_early_stopping,
     },
     "lightgbm": {
-        "n_estimators": 500,
-        "max_depth": 6,
-        "learning_rate": 0.05,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
-        "min_child_samples": 20,
-        "reg_alpha": 0.1,
-        "reg_lambda": 1.0,
+        "n_estimators": HP.model.lgb_n_estimators,
+        "max_depth": HP.model.lgb_max_depth,
+        "learning_rate": HP.model.lgb_learning_rate,
+        "subsample": HP.model.lgb_subsample,
+        "colsample_bytree": HP.model.lgb_colsample_bytree,
+        "min_child_samples": HP.model.lgb_min_child_samples,
+        "reg_alpha": HP.model.lgb_reg_alpha,
+        "reg_lambda": HP.model.lgb_reg_lambda,
         "objective": "binary",
         "metric": "binary_logloss",
         "verbosity": -1,
     },
     "catboost": {
-        "iterations": 500,
-        "depth": 6,
-        "learning_rate": 0.05,
-        "l2_leaf_reg": 3.0,
-        "subsample": 0.8,
+        "iterations": HP.model.cat_iterations,
+        "depth": HP.model.cat_depth,
+        "learning_rate": HP.model.cat_learning_rate,
+        "l2_leaf_reg": HP.model.cat_l2_leaf_reg,
+        "subsample": HP.model.cat_subsample,
         "loss_function": "Logloss",
         "eval_metric": "Logloss",
         "verbose": 0,
-        "early_stopping_rounds": 50,
+        "early_stopping_rounds": HP.model.cat_early_stopping,
     },
 }
 

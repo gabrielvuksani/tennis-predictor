@@ -41,6 +41,15 @@ def merge_odds_with_matches(matches: pd.DataFrame) -> pd.DataFrame:
     matches["odds_pinnacle_w"] = np.nan
     matches["odds_pinnacle_l"] = np.nan
 
+    # Pre-compute match-side keys once (used across strategies)
+    matches["_m_w_last"] = matches["winner_name"].map(_sackmann_lastname)
+    matches["_m_l_last"] = matches["loser_name"].map(_sackmann_lastname)
+    matches["_m_surf"] = matches["surface"].astype(str).str.lower().str.strip()
+    matches["_m_date_ord"] = matches["tourney_date"].values.astype("datetime64[D]").astype(np.int64)
+
+    # Pre-compute odds-side date ordinal for vectorized date-window checks
+    odds_df["_date_ord"] = odds_df["_date"].values.astype("datetime64[D]").astype(np.int64)
+
     # Strategy 1: Last name + initial matching (most precise)
     matched_1 = _match_by_name(matches, odds_df)
     print(f"Odds merge pass 1 (name+initial): {matched_1:,} matched")
@@ -55,6 +64,9 @@ def merge_odds_with_matches(matches: pd.DataFrame) -> pd.DataFrame:
 
     total = matches["odds_implied_w"].notna().sum()
     print(f"Total matches with odds: {total:,} / {len(matches):,} ({total/len(matches):.1%})")
+
+    # Clean up temporary columns
+    matches.drop(columns=["_m_w_last", "_m_l_last", "_m_surf", "_m_date_ord"], inplace=True)
 
     return matches
 
@@ -101,8 +113,8 @@ def _prepare_odds(odds_df: pd.DataFrame) -> pd.DataFrame:
 
     # Parse names and ranks
     if "Winner" in odds_df.columns:
-        odds_df["_w_last"] = odds_df["Winner"].apply(_extract_lastname)
-        odds_df["_l_last"] = odds_df["Loser"].apply(_extract_lastname)
+        odds_df["_w_last"] = odds_df["Winner"].map(_extract_lastname)
+        odds_df["_l_last"] = odds_df["Loser"].map(_extract_lastname)
     if "WRank" in odds_df.columns:
         odds_df["_wr"] = pd.to_numeric(odds_df["WRank"], errors="coerce")
         odds_df["_lr"] = pd.to_numeric(odds_df["LRank"], errors="coerce")
@@ -117,17 +129,17 @@ def _extract_lastname(name: str) -> str:
     if pd.isna(name) or not name:
         return ""
     name = str(name).strip().lower()
-    # "Last F." format → just take first word(s) before the initial
+    # "Last F." format -> just take first word(s) before the initial
     parts = name.split()
     if parts and parts[-1].endswith(".") and len(parts[-1]) <= 3:
         return " ".join(parts[:-1])
-    # "First Last" → take last word
+    # "First Last" -> take last word
     if len(parts) >= 2:
         return parts[-1]
     return name
 
 
-def _sackmann_lastname(name: str) -> str:
+def _sackmann_lastname(name) -> str:
     """Extract last name from Sackmann 'First Last' format."""
     if pd.isna(name) or not name:
         return ""
@@ -135,129 +147,196 @@ def _sackmann_lastname(name: str) -> str:
     return parts[-1] if parts else ""
 
 
-def _apply_odds(matches: pd.DataFrame, idx: int, odds_row) -> None:
-    """Write odds data to matches DataFrame."""
-    matches.at[idx, "odds_implied_w"] = odds_row["_ip_w"]
-    matches.at[idx, "odds_implied_l"] = odds_row["_ip_l"]
-    matches.at[idx, "odds_pinnacle_w"] = odds_row["_ow"]
-    matches.at[idx, "odds_pinnacle_l"] = odds_row["_ol"]
+def _assign_odds_vectorized(
+    matches: pd.DataFrame, match_idx: np.ndarray, odds_df: pd.DataFrame, odds_idx: np.ndarray
+) -> None:
+    """Bulk-assign odds from matched odds rows into matches DataFrame."""
+    if len(match_idx) == 0:
+        return
+    matches.loc[match_idx, "odds_implied_w"] = odds_df.loc[odds_idx, "_ip_w"].values
+    matches.loc[match_idx, "odds_implied_l"] = odds_df.loc[odds_idx, "_ip_l"].values
+    matches.loc[match_idx, "odds_pinnacle_w"] = odds_df.loc[odds_idx, "_ow"].values
+    matches.loc[match_idx, "odds_pinnacle_l"] = odds_df.loc[odds_idx, "_ol"].values
 
 
 def _match_by_name(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
-    """Strategy 1: Match by last name + first initial + date window."""
+    """Strategy 1: Match by last name + date window (vectorized).
+
+    Uses pd.merge on (w_last, l_last) then filters by date window [-1, +16] days.
+    First match (closest odds date) wins for each match row.
+    """
     if "_w_last" not in odds_df.columns:
         return 0
 
-    # Build lookup: (w_lastname, l_lastname) -> list of odds rows
-    from collections import defaultdict
-    lookup = defaultdict(list)
-    for _, row in odds_df.iterrows():
-        key = (row["_w_last"], row["_l_last"])
-        lookup[key].append(row)
+    unmatched_mask = matches["odds_implied_w"].isna()
+    m_sub = matches.loc[unmatched_mask].copy()
 
-    matched = 0
-    for idx in matches.index:
-        if not pd.isna(matches.at[idx, "odds_implied_w"]):
-            continue  # Already matched
+    # Filter out rows with empty names or missing dates
+    valid = (m_sub["_m_w_last"] != "") & (m_sub["_m_l_last"] != "") & m_sub["tourney_date"].notna()
+    m_sub = m_sub.loc[valid]
+    if len(m_sub) == 0:
+        return 0
 
-        w_last = _sackmann_lastname(matches.at[idx, "winner_name"])
-        l_last = _sackmann_lastname(matches.at[idx, "loser_name"])
-        td = matches.at[idx, "tourney_date"]
+    # Merge on exact (w_last, l_last), preserving original indices for assignment
+    m_sub_keyed = m_sub[["_m_w_last", "_m_l_last", "_m_date_ord"]].copy()
+    m_sub_keyed["_midx"] = m_sub_keyed.index
 
-        if not w_last or not l_last or pd.isna(td):
-            continue
+    odds_keyed = odds_df[["_w_last", "_l_last", "_date_ord", "_ip_w", "_ip_l", "_ow", "_ol"]].copy()
+    odds_keyed.rename(columns={"_w_last": "_m_w_last", "_l_last": "_m_l_last"}, inplace=True)
+    odds_keyed["_oidx"] = odds_keyed.index
 
-        key = (w_last, l_last)
-        if key not in lookup:
-            continue
+    merged = m_sub_keyed.merge(odds_keyed, on=["_m_w_last", "_m_l_last"], how="inner")
+    if len(merged) == 0:
+        return 0
 
-        for orow in lookup[key]:
-            diff = (orow["_date"] - td).days
-            if -1 <= diff <= 16:
-                _apply_odds(matches, idx, orow)
-                matched += 1
-                break
+    diff = merged["_date_ord_y"] - merged["_date_ord_x"]
+    merged = merged.loc[(diff >= -1) & (diff <= 16)].copy()
+    if len(merged) == 0:
+        return 0
 
-    return matched
+    merged["_abs_diff"] = (merged["_date_ord_y"] - merged["_date_ord_x"]).abs()
+    merged.sort_values("_abs_diff", inplace=True)
+    best = merged.drop_duplicates(subset=["_midx"], keep="first")
+
+    _assign_odds_vectorized(matches, best["_midx"].values, odds_df, best["_oidx"].values)
+    return len(best)
 
 
 def _match_by_lastname(matches: pd.DataFrame, odds_df: pd.DataFrame) -> int:
-    """Strategy 2: Last name + surface + date window (for name format mismatches)."""
-    matched = 0
+    """Strategy 2: Last name substring + surface + date window (vectorized).
 
-    # Build date-indexed lookup
-    from collections import defaultdict
-    date_lookup = defaultdict(list)
-    for _, row in odds_df.iterrows():
-        d = str(row["_date"].date())
-        date_lookup[d].append(row)
+    The original strategy checked `w_last in odds_w_last` (substring containment).
+    To replicate this vectorized: we merge on surface + date bucket to limit the
+    cross-product size, filter by exact date window, then check substring containment.
+    """
+    if "_surf" not in odds_df.columns:
+        return 0
 
-    for idx in matches.index:
-        if not pd.isna(matches.at[idx, "odds_implied_w"]):
-            continue
+    unmatched_mask = matches["odds_implied_w"].isna()
+    m_sub = matches.loc[unmatched_mask].copy()
 
-        w_last = _sackmann_lastname(matches.at[idx, "winner_name"])
-        l_last = _sackmann_lastname(matches.at[idx, "loser_name"])
-        surf = str(matches.at[idx, "surface"]).lower().strip()
-        td = matches.at[idx, "tourney_date"]
+    valid = (m_sub["_m_w_last"] != "") & (m_sub["_m_l_last"] != "") & m_sub["tourney_date"].notna()
+    m_sub = m_sub.loc[valid]
+    if len(m_sub) == 0:
+        return 0
 
-        if not w_last or not l_last or pd.isna(td):
-            continue
+    # Use 21-day date buckets to limit cross-product size.
+    # A match with date D can match odds in [D, D+16], so we need to join
+    # across at most 2 adjacent buckets. We do this by duplicating matches
+    # into their bucket and the next bucket.
+    bucket_days = 21
 
-        # Search date window
-        for day_offset in range(0, 17):
-            check_date = str((td + pd.Timedelta(days=day_offset)).date())
-            if check_date not in date_lookup:
-                continue
-            for orow in date_lookup[check_date]:
-                if (orow.get("_surf", "") == surf and
-                    w_last in orow.get("_w_last", "") and
-                    l_last in orow.get("_l_last", "")):
-                    _apply_odds(matches, idx, orow)
-                    matched += 1
-                    break
-            if not pd.isna(matches.at[idx, "odds_implied_w"]):
-                break
+    m_keyed = m_sub[["_m_w_last", "_m_l_last", "_m_surf", "_m_date_ord"]].copy()
+    m_keyed["_midx"] = m_keyed.index
+    m_keyed["_bucket"] = m_keyed["_m_date_ord"] // bucket_days
 
-    return matched
+    # Duplicate match rows into the next bucket so matches near bucket boundaries
+    # can find odds in the adjacent bucket
+    m_keyed2 = m_keyed.copy()
+    m_keyed2["_bucket"] = m_keyed2["_bucket"] + 1
+    m_keyed_all = pd.concat([m_keyed, m_keyed2], ignore_index=True)
+
+    o_keyed = odds_df[["_w_last", "_l_last", "_surf", "_date_ord", "_ip_w", "_ip_l", "_ow", "_ol"]].copy()
+    o_keyed.rename(columns={"_surf": "_m_surf"}, inplace=True)
+    o_keyed["_oidx"] = o_keyed.index
+    o_keyed["_bucket"] = o_keyed["_date_ord"] // bucket_days
+
+    # Merge on surface + date bucket
+    merged = m_keyed_all.merge(o_keyed, on=["_m_surf", "_bucket"], how="inner")
+    if len(merged) == 0:
+        return 0
+
+    # Date window [0, +16] days (original used range(0, 17))
+    diff = merged["_date_ord_y"] - merged["_date_ord_x"]
+    merged = merged.loc[(diff >= 0) & (diff <= 16)].copy()
+    if len(merged) == 0:
+        return 0
+
+    # Substring containment: match_w_last in odds_w_last AND match_l_last in odds_l_last
+    w_contains = np.array([
+        mw in ow
+        for mw, ow in zip(merged["_m_w_last"].values, merged["_w_last"].values)
+    ])
+    l_contains = np.array([
+        ml in ol
+        for ml, ol in zip(merged["_m_l_last"].values, merged["_l_last"].values)
+    ])
+    merged = merged.loc[w_contains & l_contains].copy()
+    if len(merged) == 0:
+        return 0
+
+    # Pick closest date match per match row
+    merged["_abs_diff"] = (merged["_date_ord_y"] - merged["_date_ord_x"]).abs()
+    merged.sort_values("_abs_diff", inplace=True)
+    best = merged.drop_duplicates(subset=["_midx"], keep="first")
+
+    _assign_odds_vectorized(matches, best["_midx"].values, odds_df, best["_oidx"].values)
+    return len(best)
 
 
 def _match_by_rank(matches: pd.DataFrame, odds_df: pd.DataFrame, tolerance: int = 5) -> int:
-    """Strategy 3: Rank proximity + surface + date window."""
-    if "_wr" not in odds_df.columns:
+    """Strategy 3: Rank proximity + surface + date window (vectorized).
+
+    Merges on surface + date bucket, filters by date window and rank proximity.
+    """
+    if "_wr" not in odds_df.columns or "_surf" not in odds_df.columns:
         return 0
 
-    matched = 0
-    from collections import defaultdict
-    date_lookup = defaultdict(list)
-    for _, row in odds_df.iterrows():
-        d = str(row["_date"].date())
-        date_lookup[d].append(row)
+    unmatched_mask = matches["odds_implied_w"].isna()
+    m_sub = matches.loc[unmatched_mask].copy()
 
-    for idx in matches.index:
-        if not pd.isna(matches.at[idx, "odds_implied_w"]):
-            continue
+    valid = (
+        m_sub["winner_rank"].notna()
+        & m_sub["loser_rank"].notna()
+        & m_sub["tourney_date"].notna()
+    )
+    m_sub = m_sub.loc[valid]
+    if len(m_sub) == 0:
+        return 0
 
-        wr = matches.at[idx, "winner_rank"]
-        lr = matches.at[idx, "loser_rank"]
-        surf = str(matches.at[idx, "surface"]).lower().strip()
-        td = matches.at[idx, "tourney_date"]
+    bucket_days = 21
 
-        if pd.isna(wr) or pd.isna(lr) or pd.isna(td):
-            continue
+    m_keyed = m_sub[["_m_surf", "_m_date_ord"]].copy()
+    m_keyed["_m_wr"] = m_sub["winner_rank"]
+    m_keyed["_m_lr"] = m_sub["loser_rank"]
+    m_keyed["_midx"] = m_keyed.index
+    m_keyed["_bucket"] = m_keyed["_m_date_ord"] // bucket_days
 
-        for day_offset in range(0, 17):
-            check_date = str((td + pd.Timedelta(days=day_offset)).date())
-            if check_date not in date_lookup:
-                continue
-            for orow in date_lookup[check_date]:
-                if (orow.get("_surf", "") == surf and
-                    abs(orow.get("_wr", 0) - wr) <= tolerance and
-                    abs(orow.get("_lr", 0) - lr) <= tolerance):
-                    _apply_odds(matches, idx, orow)
-                    matched += 1
-                    break
-            if not pd.isna(matches.at[idx, "odds_implied_w"]):
-                break
+    # Duplicate into adjacent bucket for boundary coverage
+    m_keyed2 = m_keyed.copy()
+    m_keyed2["_bucket"] = m_keyed2["_bucket"] + 1
+    m_keyed_all = pd.concat([m_keyed, m_keyed2], ignore_index=True)
 
-    return matched
+    o_keyed = odds_df[["_surf", "_date_ord", "_wr", "_lr", "_ip_w", "_ip_l", "_ow", "_ol"]].copy()
+    o_keyed.rename(columns={"_surf": "_m_surf"}, inplace=True)
+    o_keyed = o_keyed.dropna(subset=["_wr", "_lr"])
+    o_keyed["_oidx"] = o_keyed.index
+    o_keyed["_bucket"] = o_keyed["_date_ord"] // bucket_days
+
+    if len(o_keyed) == 0:
+        return 0
+
+    # Merge on surface + date bucket
+    merged = m_keyed_all.merge(o_keyed, on=["_m_surf", "_bucket"], how="inner")
+    if len(merged) == 0:
+        return 0
+
+    # Date window [0, +16]
+    diff = merged["_date_ord_y"] - merged["_date_ord_x"]
+    date_ok = (diff >= 0) & (diff <= 16)
+
+    # Rank proximity
+    wr_ok = (merged["_wr"] - merged["_m_wr"]).abs() <= tolerance
+    lr_ok = (merged["_lr"] - merged["_m_lr"]).abs() <= tolerance
+
+    merged = merged.loc[date_ok & wr_ok & lr_ok].copy()
+    if len(merged) == 0:
+        return 0
+
+    # Pick closest date per match
+    merged["_abs_diff"] = (merged["_date_ord_y"] - merged["_date_ord_x"]).abs()
+    merged.sort_values("_abs_diff", inplace=True)
+    best = merged.drop_duplicates(subset=["_midx"], keep="first")
+
+    _assign_odds_vectorized(matches, best["_midx"].values, odds_df, best["_oidx"].values)
+    return len(best)

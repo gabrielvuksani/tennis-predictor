@@ -109,23 +109,34 @@ class StackingEnsemble(BaseEstimator, ClassifierMixin):
 
             self.fitted_base_models_.append((name, fold_models))
 
-        # Train meta-learner on out-of-fold predictions + passthrough features
-        print("  Training meta-learner...")
+        # Build meta-features: out-of-fold predictions + passthrough features
         meta_input = oof_predictions
         if self.passthrough and isinstance(X, pd.DataFrame):
             pt_cols = [c for c in self.PASSTHROUGH_FEATURES if c in X.columns]
             if pt_cols:
                 pt_data = X[pt_cols].fillna(0).values
                 meta_input = np.hstack([oof_predictions, pt_data])
-        self.meta_learner.fit(meta_input, y)
 
-        # Calibrate (must use same meta_input shape as training)
+        # Split meta-features temporally: first 80% trains meta-learner,
+        # last 20% is held out for calibration. This prevents the calibrator
+        # from overfitting to data the meta-learner was optimized on.
         if self.calibrate:
-            meta_proba = self.meta_learner.predict_proba(meta_input)[:, 1]
+            split_idx = int(len(y) * 0.8)
+            meta_train, meta_cal = meta_input[:split_idx], meta_input[split_idx:]
+            y_train, y_cal = y[:split_idx], y[split_idx:]
+
+            print("  Training meta-learner...")
+            self.meta_learner.fit(meta_train, y_train)
+
+            print("  Fitting calibrator on held-out meta-predictions...")
+            cal_proba = self.meta_learner.predict_proba(meta_cal)[:, 1]
             self.calibrator_ = IsotonicRegression(
                 y_min=0.01, y_max=0.99, out_of_bounds="clip"
             )
-            self.calibrator_.fit(meta_proba, y)
+            self.calibrator_.fit(cal_proba, y_cal)
+        else:
+            print("  Training meta-learner...")
+            self.meta_learner.fit(meta_input, y)
 
         # Store passthrough column names for predict
         self._pt_cols = (

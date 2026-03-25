@@ -69,6 +69,9 @@ class TemporalState:
     # Days since last match (for RD decay in Glicko-2)
     _last_updated: dict[str, pd.Timestamp] = field(default_factory=dict)
 
+    # Last processed match date (for temporal ordering enforcement)
+    last_processed_date: pd.Timestamp | None = None
+
 
 class TemporalGuard:
     """Enforces temporal isolation in feature computation.
@@ -98,6 +101,16 @@ class TemporalGuard:
             raise TemporalLeakageError(
                 f"Match {match_id} has already been processed. "
                 f"Re-processing would allow information to leak."
+            )
+        if (
+            self.state.last_processed_date is not None
+            and not pd.isna(match_date)
+            and match_date < self.state.last_processed_date
+        ):
+            raise ValueError(
+                f"Match {match_id} has date {match_date} which is before "
+                f"the last processed date {self.state.last_processed_date}. "
+                f"Matches must be processed in chronological order."
             )
 
     def extract_pre_match_state(self, match: pd.Series) -> dict[str, Any]:
@@ -303,6 +316,9 @@ class TemporalGuard:
         self._last_updated_match = match_id
         self._update_count += 1
         self.state.cutoff = max(self.state.cutoff, match_date)
+        if not pd.isna(match_date):
+            if self.state.last_processed_date is None or match_date > self.state.last_processed_date:
+                self.state.last_processed_date = match_date
 
     # === INTERNAL FEATURE EXTRACTORS ===
 
@@ -659,38 +675,6 @@ class TemporalGuard:
         from tennis_predictor.data.sackmann import ROUND_ORDER
 
         round_name = match.get("round", "")
-
-        # Compute match-level stats for history
-        def _compute_stats(prefix: str, is_winner: bool) -> dict:
-            # Map pairwise prefix back to winner/loser stats
-            if (prefix == "p1" and result == 1) or (prefix == "p2" and result == 0):
-                stat_prefix = "w_" if is_winner else "l_"
-            else:
-                stat_prefix = "l_" if is_winner else "w_"
-
-            # We need the original match row which has w_ and l_ prefixed stats
-            # Since we're working with pairwise rows, we look for match stats
-            svpt = match.get(f"{stat_prefix}svpt", np.nan)
-            first_in = match.get(f"{stat_prefix}1stIn", np.nan)
-            first_won = match.get(f"{stat_prefix}1stWon", np.nan)
-            second_won = match.get(f"{stat_prefix}2ndWon", np.nan)
-            ace = match.get(f"{stat_prefix}ace", np.nan)
-            bp_saved = match.get(f"{stat_prefix}bpSaved", np.nan)
-            bp_faced = match.get(f"{stat_prefix}bpFaced", np.nan)
-
-            fsp = first_in / svpt if _valid(svpt) and _valid(first_in) and svpt > 0 else np.nan
-            fswp = (first_won / first_in
-                    if _valid(first_won) and _valid(first_in) and first_in > 0 else np.nan)
-            bp_save_pct = (bp_saved / bp_faced
-                           if _valid(bp_saved) and _valid(bp_faced) and bp_faced > 0 else np.nan)
-            ace_rate = ace / svpt if _valid(ace) and _valid(svpt) and svpt > 0 else np.nan
-
-            return {
-                "first_serve_pct": fsp,
-                "first_serve_won_pct": fswp,
-                "bp_save_pct": bp_save_pct,
-                "ace_rate": ace_rate,
-            }
 
         # For pairwise format, we need to reconstruct who had which stats
         # In the original data: winner stats = w_, loser stats = l_

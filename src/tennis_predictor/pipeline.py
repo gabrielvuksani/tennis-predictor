@@ -24,6 +24,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from tennis_predictor.config import PROCESSED_DIR, CACHE_DIR
+from tennis_predictor.hyperparams import HP
 
 
 def run_full_pipeline(
@@ -305,7 +306,8 @@ def _compute_intransitivity(pairwise: pd.DataFrame, matches: pd.DataFrame) -> pd
 
     # Build win graph from recent matches (last 2 years)
     max_date = pairwise["tourney_date"].max()
-    cutoff = max_date - pd.Timedelta(days=730)
+    lookback_days = HP.pipeline.intransitivity_lookback_days
+    cutoff = max_date - pd.Timedelta(days=lookback_days)
 
     # We'll compute intransitivity in a rolling fashion
     # For efficiency, pre-build adjacency info from original matches
@@ -324,7 +326,7 @@ def _compute_intransitivity(pairwise: pd.DataFrame, matches: pd.DataFrame) -> pd
             continue
 
         # Remove old matches from window
-        cutoff_date = match_date - pd.Timedelta(days=730)
+        cutoff_date = match_date - pd.Timedelta(days=lookback_days)
         while window_matches and window_matches[0][2] < cutoff_date:
             old_w, old_l, _ = window_matches.pop(0)
             if old_w in win_graph:
@@ -415,7 +417,7 @@ def _train_and_evaluate(
     train_dates = train_pairwise_all.loc[non_ret, "tourney_date"]
     max_train_date = train_dates.max()
     days_ago = (max_train_date - train_dates).dt.days.values.astype(float)
-    gamma = 0.9997  # Per-day decay (~1 year half-life)
+    gamma = HP.pipeline.time_decay_gamma  # Per-day decay (~1 year half-life)
     sample_weights = gamma ** days_ago
     sample_weights = sample_weights / sample_weights.mean()  # Normalize to mean=1
 

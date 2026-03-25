@@ -28,6 +28,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from tennis_predictor.hyperparams import HP
+
 
 def extract_advanced_features(
     match: pd.Series,
@@ -198,7 +200,7 @@ def _serve_return_features(state, p1: str, p2: str) -> dict:
 def _ewma_features(state, p1: str, p2: str, surface: str) -> dict:
     """Exponentially weighted moving averages — recent matches matter more."""
     features = {}
-    alpha = 0.15  # Decay factor — ~7 match half-life
+    alpha = HP.features.ewma_alpha  # Decay factor — ~7 match half-life
 
     for prefix, pid in [("p1", p1), ("p2", p2)]:
         history = state.match_history.get(pid, [])
@@ -560,7 +562,7 @@ def _surface_transition_features(state, p1: str, p2: str, current_surface: str) 
 def _age_trajectory_features(match: pd.Series) -> dict:
     """Age-related features: distance from peak, career stage."""
     features = {}
-    peak_age = 25.5  # Men's ATP peak
+    peak_age = HP.features.peak_age  # Men's ATP peak
 
     for prefix in ["p1", "p2"]:
         age = match.get(f"{prefix}_age", np.nan)
@@ -569,7 +571,7 @@ def _age_trajectory_features(match: pd.Series) -> dict:
             features[f"{prefix}_dist_from_peak"] = abs(age - peak_age)
             features[f"{prefix}_age_squared"] = age ** 2
             features[f"{prefix}_pre_peak"] = int(age < peak_age)
-            features[f"{prefix}_post_peak"] = int(age > 28.0)
+            features[f"{prefix}_post_peak"] = int(age > HP.features.post_peak_age)
         else:
             features[f"{prefix}_dist_from_peak"] = np.nan
             features[f"{prefix}_age_squared"] = np.nan

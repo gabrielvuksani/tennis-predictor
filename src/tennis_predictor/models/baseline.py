@@ -7,6 +7,8 @@ to win probabilities using the logistic function. This is what we must beat.
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
 
+from tennis_predictor.hyperparams import HP
+
 
 class EloBaseline(BaseEstimator, ClassifierMixin):
     """Predicts match outcome purely from Elo difference.
@@ -14,7 +16,7 @@ class EloBaseline(BaseEstimator, ClassifierMixin):
     Uses the logistic formula: P(p1 wins) = 1 / (1 + 10^((elo2 - elo1) / 400))
     """
 
-    def __init__(self, elo_column: str = "elo_diff", scale: float = 400.0):
+    def __init__(self, elo_column: str = "elo_diff", scale: float = HP.elo.logistic_scale):
         self.elo_column = elo_column
         self.scale = scale
 
